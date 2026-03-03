@@ -15,9 +15,16 @@ if (!ADMIN_KEY) {
 
 const db = new sqlite3.Database('./licences.db');
 
+/* ===========================
+   RECREATE TABLE (TEMPORAIRE)
+   Supprime ancienne structure
+=========================== */
 db.serialize(() => {
+
+  db.run("DROP TABLE IF EXISTS licences");
+
   db.run(`
-    CREATE TABLE IF NOT EXISTS licences (
+    CREATE TABLE licences (
       licenceKey TEXT PRIMARY KEY,
       machineId TEXT,
       type TEXT NOT NULL,
@@ -34,9 +41,9 @@ function generateKey() {
 
 function formatKey(raw) {
   return "VPIJLR-" +
-    raw.substring(0,8) + "-" +
-    raw.substring(8,16) + "-" +
-    raw.substring(16,24);
+    raw.substring(0, 8) + "-" +
+    raw.substring(8, 16) + "-" +
+    raw.substring(16, 24);
 }
 
 function today() {
