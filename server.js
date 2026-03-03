@@ -1,5 +1,6 @@
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
+const crypto = require('crypto');
 
 const app = express();
 app.use(express.json());
@@ -8,7 +9,7 @@ const PORT = process.env.PORT || 3000;
 const ADMIN_KEY = process.env.ADMIN_KEY;
 
 if (!ADMIN_KEY) {
-  console.error("ADMIN_KEY environment variable missing.");
+  console.error("ADMIN_KEY manquant.");
   process.exit(1);
 }
 
@@ -17,7 +18,8 @@ const db = new sqlite3.Database('./licences.db');
 db.serialize(() => {
   db.run(`
     CREATE TABLE IF NOT EXISTS licences (
-      machineId TEXT PRIMARY KEY,
+      licenceKey TEXT PRIMARY KEY,
+      machineId TEXT,
       type TEXT NOT NULL,
       plan TEXT,
       expiry TEXT,
@@ -26,16 +28,39 @@ db.serialize(() => {
   `);
 });
 
-app.post('/verify', (req, res) => {
-  const { machineId } = req.body;
+function generateKey() {
+  return crypto.randomBytes(16).toString('hex').toUpperCase();
+}
 
-  if (!machineId) {
+function formatKey(raw) {
+  return "VPIJLR-" +
+    raw.substring(0,8) + "-" +
+    raw.substring(8,16) + "-" +
+    raw.substring(16,24);
+}
+
+function today() {
+  return new Date().toISOString().split("T")[0];
+}
+
+function isExpired(expiry) {
+  return today() > expiry;
+}
+
+/* ===========================
+   ACTIVER LICENCE (CLIENT)
+=========================== */
+app.post('/activate', (req, res) => {
+
+  const { licenceKey, machineId } = req.body;
+
+  if (!licenceKey || !machineId) {
     return res.json({ valid: false });
   }
 
   db.get(
-    "SELECT * FROM licences WHERE machineId = ?",
-    [machineId],
+    "SELECT * FROM licences WHERE licenceKey = ?",
+    [licenceKey],
     (err, row) => {
 
       if (err || !row) {
@@ -46,58 +71,73 @@ app.post('/verify', (req, res) => {
         return res.json({ valid: false });
       }
 
-      if (row.type === "subscription") {
-        const today = new Date().toISOString().split("T")[0];
-        if (today > row.expiry) {
-          return res.json({ valid: false });
-        }
+      if (row.type === "subscription" && isExpired(row.expiry)) {
+        return res.json({ valid: false });
       }
 
-      return res.json({ valid: true });
+      if (!row.machineId) {
+        db.run(
+          "UPDATE licences SET machineId = ? WHERE licenceKey = ?",
+          [machineId, licenceKey]
+        );
+      } else if (row.machineId !== machineId) {
+        return res.json({ valid: false });
+      }
+
+      return res.json({
+        valid: true,
+        type: row.type,
+        plan: row.plan,
+        expiry: row.expiry
+      });
     }
   );
 });
 
-app.post('/add', (req, res) => {
+/* ===========================
+   AJOUT LICENCE (ADMIN)
+=========================== */
+app.post('/create', (req, res) => {
 
-  const { adminKey, machineId, type, plan, expiry } = req.body;
+  const { adminKey, type, plan, expiry } = req.body;
 
   if (adminKey !== ADMIN_KEY) {
     return res.status(403).json({ error: "Unauthorized" });
   }
 
-  if (!machineId || !type) {
-    return res.status(400).json({ error: "Missing parameters" });
-  }
+  const rawKey = generateKey();
+  const licenceKey = formatKey(rawKey);
 
   db.run(
-    `INSERT OR REPLACE INTO licences(machineId, type, plan, expiry, revoked)
+    `INSERT INTO licences(licenceKey, type, plan, expiry, revoked)
      VALUES(?, ?, ?, ?, 0)`,
-    [machineId, type, plan || null, expiry || null],
+    [licenceKey, type, plan || "none", expiry || "2099-12-31"],
     function(err) {
       if (err) {
         return res.json({ success: false });
       }
-      return res.json({ success: true });
+      return res.json({
+        success: true,
+        licenceKey
+      });
     }
   );
 });
 
+/* ===========================
+   REVOQUER LICENCE
+=========================== */
 app.post('/revoke', (req, res) => {
 
-  const { adminKey, machineId } = req.body;
+  const { adminKey, licenceKey } = req.body;
 
   if (adminKey !== ADMIN_KEY) {
     return res.status(403).json({ error: "Unauthorized" });
   }
 
-  if (!machineId) {
-    return res.status(400).json({ error: "Missing machineId" });
-  }
-
   db.run(
-    `UPDATE licences SET revoked = 1 WHERE machineId = ?`,
-    [machineId],
+    `UPDATE licences SET revoked = 1 WHERE licenceKey = ?`,
+    [licenceKey],
     function(err) {
       if (err) {
         return res.json({ success: false });
@@ -107,10 +147,13 @@ app.post('/revoke', (req, res) => {
   );
 });
 
+/* ===========================
+   HEALTH CHECK
+=========================== */
 app.get('/', (req, res) => {
-  res.send("Licence Server Running");
+  res.send("Licence Server V2 Running");
 });
 
 app.listen(PORT, () => {
-  console.log("Licence server running on port " + PORT);
+  console.log("Licence server V2 running on port " + PORT);
 });
