@@ -1,153 +1,141 @@
+/* ======================================================
+MODULE 01
+IMPORTS
+====================================================== */
+
 const express = require("express");
 const cors = require("cors");
 const fs = require("fs");
-
-const app = express();
-
-/* ======================================================
-MODULE 01
-CONFIG
-====================================================== */
-
-app.use(cors());
-
-// ⚠️ IMPORTANT : on n'applique PAS express.json globalement
-app.use((req, res, next) => {
-  if (req.originalUrl === "/stripe-webhook") {
-    next();
-  } else {
-    express.json()(req, res, next);
-  }
-});
-
-const FILE = "licences.json";
+const path = require("path");
 
 /* ======================================================
 MODULE 02
-MEMOIRE
+INITIALISATION
 ====================================================== */
 
-let licences = [];
+const app = express();
+
+app.use(cors());
+app.use(express.json());
 
 /* ======================================================
 MODULE 03
-CHARGEMENT
+FICHIER STOCKAGE LICENCES
 ====================================================== */
 
+const DATA_FILE = path.join(__dirname, "licences.json");
+
 function chargerLicences() {
-  if (fs.existsSync(FILE)) {
-    licences = JSON.parse(fs.readFileSync(FILE));
+  try {
+    if (!fs.existsSync(DATA_FILE)) return [];
+    const data = fs.readFileSync(DATA_FILE, "utf8");
+    return JSON.parse(data);
+  } catch (e) {
+    return [];
   }
 }
+
+function sauvegarderLicences(data) {
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), "utf8");
+}
+
+let licences = chargerLicences();
 
 /* ======================================================
 MODULE 04
-SAUVEGARDE
+ROUTE RACINE SERVEUR
 ====================================================== */
 
-function sauvegarderLicences() {
-  fs.writeFileSync(FILE, JSON.stringify(licences, null, 2));
-}
+app.get("/", (req, res) => {
+  res.send("SERVEUR LICENCE JLR ACTIF");
+});
 
 /* ======================================================
 MODULE 05
-GENERATEUR CLE
+ROUTE TEST API
 ====================================================== */
 
-function genererCle() {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  let cle = "";
-
-  for (let i = 0; i < 5; i++) {
-    let part = "";
-    for (let j = 0; j < 5; j++) {
-      part += chars[Math.floor(Math.random() * chars.length)];
-    }
-    cle += part;
-    if (i < 4) cle += "-";
-  }
-
-  return cle;
-}
+app.get("/api", (req, res) => {
+  res.json({
+    status: "OK",
+    licences: licences.length,
+    date: new Date()
+  });
+});
 
 /* ======================================================
 MODULE 06
-TEST
+LISTER LICENCES
 ====================================================== */
-
-app.get("/ping", (req, res) => {
-  res.json({ status: "ok" });
-});
-
-/* ======================================================
-MODULE 07
-LICENCES
-====================================================== */
-
-app.post("/ajouter-licence", (req, res) => {
-  licences.push(req.body);
-  sauvegarderLicences();
-  res.json({ status: "ok" });
-});
 
 app.get("/licences", (req, res) => {
   res.json(licences);
 });
 
-app.post("/supprimer-licence", (req, res) => {
-  const { cle } = req.body;
-  licences = licences.filter(l => l.cle !== cle);
-  sauvegarderLicences();
-  res.json({ status: "ok" });
+/* ======================================================
+MODULE 07
+AJOUT LICENCE
+====================================================== */
+
+app.post("/licences", (req, res) => {
+  const licence = req.body;
+
+  if (!licence || !licence.cle) {
+    return res.status(400).json({ erreur: "Licence invalide" });
+  }
+
+  licences.push(licence);
+  sauvegarderLicences(licences);
+
+  res.json({ succes: true, licence });
 });
 
 /* ======================================================
 MODULE 08
-WEBHOOK STRIPE (FINAL CORRECT)
+SUPPRIMER LICENCE
 ====================================================== */
 
-app.post("/stripe-webhook", express.raw({ type: "application/json" }), (req, res) => {
+app.post("/supprimer-licence", (req, res) => {
+  const { cle } = req.body;
 
-  try {
-
-    const event = JSON.parse(req.body.toString());
-
-    if (event.type === "checkout.session.completed") {
-
-      const email = event.data.object.customer_email || "test@client.com";
-
-      const cle = genererCle();
-
-      const licence = {
-        client: email,
-        cle: cle,
-        date: new Date().toISOString()
-      };
-
-      licences.push(licence);
-      sauvegarderLicences();
-
-      console.log("Licence créée :", licence);
-    }
-
-    res.json({ received: true });
-
-  } catch (err) {
-    console.error("Erreur webhook :", err);
-    res.status(400).send("Erreur webhook");
+  if (!cle) {
+    return res.status(400).json({ erreur: "Clé manquante" });
   }
 
+  licences = licences.filter(l => l.cle !== cle);
+  sauvegarderLicences(licences);
+
+  res.json({ succes: true });
 });
 
 /* ======================================================
 MODULE 09
-DEMARRAGE
+VERIFIER LICENCE
 ====================================================== */
 
-chargerLicences();
+app.post("/verifier", (req, res) => {
+  const { cle } = req.body;
+
+  if (!cle) {
+    return res.status(400).json({ valide: false });
+  }
+
+  const licence = licences.find(l => l.cle === cle);
+
+  if (!licence) {
+    return res.json({ valide: false });
+  }
+
+  res.json({ valide: true, licence });
+});
+
+/* ======================================================
+MODULE 10
+DEMARRAGE SERVEUR
+====================================================== */
 
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log("Serveur Stripe OK");
+  console.log("Serveur démarré sur port " + PORT);
 });
