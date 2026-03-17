@@ -1,1 +1,35 @@
-[]
+[
+  {
+    "logiciel": "VPIJLR 2026",
+    "client": "gerad menvu",
+    "email": "jlouis40@hotmail.com",
+    "cle": "59BVN5-VKYTTV-59XFMT-BBLSFQ-86PNG3-W7U6HO-KGLY9E",
+    "type": "mensuelle_1",
+    "machines": 1,
+    "date_activation": "2026-03-16",
+    "date_expiration": "2026-04-16",
+    "statut": "actif"
+  },
+  {
+    "logiciel": "VPIJLR 2026",
+    "client": "raoult bedard",
+    "email": "",
+    "cle": "IQDPZ2-CMDT0Z-9O39V9-6W5EBD-F58ERL-EQUYWT-M5329M",
+    "type": "mensuelle_1",
+    "machines": 1,
+    "date_activation": "2026-03-17",
+    "date_expiration": "2026-04-17",
+    "statut": "actif"
+  },
+  {
+    "logiciel": "VPIJLR 2026",
+    "client": "misere",
+    "email": "jlouis40@hotmail.com",
+    "cle": "QKCFI1-EZR8KA-2GHLRA-72SJ9J-7BZ1NN-SR3LRB-7BPUP0",
+    "type": "mensuelle_1",
+    "machines": 1,
+    "date_activation": "2026-03-17",
+    "date_expiration": "2026-04-17",
+    "statut": "actif"
+  }
+]
