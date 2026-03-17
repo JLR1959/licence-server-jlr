@@ -1,205 +1,138 @@
+
 /* ======================================================
 MODULE 01
-CONFIG SERVEUR
+CONFIGURATION SERVEUR
 ====================================================== */
 
 const API_URL = "https://licence-server-jlr-eui5.onrender.com";
 
 /* ======================================================
 MODULE 02
-BASE DES LICENCES
+ETAT SERVEUR
 ====================================================== */
 
-let licences = [];
+async function verifierServeur() {
+  const barre = document.getElementById("barreEtat");
+  const texte = document.getElementById("etatServeurTexte");
+
+  barre.className = "status-bar status-connecting";
+  texte.textContent = "Connexion...";
+
+  try {
+    const res = await fetch(API_URL + "/api");
+    const data = await res.json();
+
+    barre.className = "status-bar status-online";
+    barre.textContent = "Serveur connecté";
+    texte.textContent = "EN LIGNE";
+
+    document.getElementById("compteurLicences").textContent = data.licences;
+    document.getElementById("derniereSync").textContent = new Date().toLocaleString();
+
+  } catch (e) {
+    barre.className = "status-bar status-offline";
+    barre.textContent = "Serveur hors ligne";
+    texte.textContent = "OFFLINE";
+  }
+}
 
 /* ======================================================
 MODULE 03
-OUTILS VISUELS
+GENERER LICENCE
 ====================================================== */
 
-function heureActuelle() {
-  return new Date().toLocaleTimeString("fr-CA");
+function genererCle() {
+  return "LIC-" + Math.random().toString(36).substring(2, 10).toUpperCase();
 }
-
-function ajouterJournal(message) {
-  const journal = document.getElementById("journalActivite");
-  const ligne = "[" + heureActuelle() + "] " + message;
-  journal.textContent = ligne + "\n" + journal.textContent;
-}
-
-function setEtatServeur(mode, texte) {
-  const barre = document.getElementById("barreEtat");
-  const etatTexte = document.getElementById("etatServeurTexte");
-
-  barre.className = "status-bar";
-
-  if (mode === "online") {
-    barre.classList.add("status-online");
-    etatTexte.textContent = "Connecté";
-  }
-
-  if (mode === "offline") {
-    barre.classList.add("status-offline");
-    etatTexte.textContent = "Hors ligne";
-  }
-
-  if (mode === "connecting") {
-    barre.classList.add("status-connecting");
-    etatTexte.textContent = "Connexion...";
-  }
-
-  barre.textContent = texte;
-}
-
-function majCompteurLicences() {
-  document.getElementById("compteurLicences").textContent = licences.length;
-}
-
-function majDerniereSync() {
-  document.getElementById("derniereSync").textContent = new Date().toLocaleString("fr-CA");
-}
-
-/* ======================================================
-MODULE 04
-GENERATEUR CODE ACTIVATION
-====================================================== */
-
-function genererCodeActivation() {
-  const caracteres = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  let code = "";
-
-  for (let bloc = 0; bloc < 7; bloc++) {
-    let segment = "";
-
-    for (let i = 0; i < 6; i++) {
-      segment += caracteres.charAt(Math.floor(Math.random() * caracteres.length));
-    }
-
-    code += segment;
-    if (bloc < 6) code += "-";
-  }
-
-  return code;
-}
-
-/* ======================================================
-MODULE 05
-CREATION LICENCE
-====================================================== */
 
 async function genererLicence() {
 
   const client = document.getElementById("client").value.trim();
+  const email = document.getElementById("emailClient").value.trim();
+  const type = document.getElementById("typeLicence").value;
+  const logiciel = document.getElementById("logiciel").value;
 
-  if (client === "") {
-    alert("Entrer le nom du client");
-    ajouterJournal("Création refusée : nom client manquant.");
+  if (!client) {
+    alert("Nom client requis");
     return;
   }
 
-  const code = genererCodeActivation();
-  document.getElementById("licenceGeneree").value = code;
+  const cle = genererCle();
 
   const licence = {
-    client: client,
-    cle: code,
-    date: new Date().toISOString()
+    logiciel,
+    client,
+    email,
+    type,
+    cle,
+    dateCreation: new Date().toISOString()
   };
 
   try {
-    setEtatServeur("connecting", "Envoi licence...");
-
-    const reponse = await fetch(API_URL + "/ajouter-licence", {
+    await fetch(API_URL + "/licences", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(licence)
     });
 
-    if (!reponse.ok) {
-      throw new Error("Erreur serveur");
-    }
+    document.getElementById("licenceGeneree").value = cle;
 
-    await reponse.json();
+    log("Licence créée : " + cle);
 
-    setEtatServeur("online", "Licence enregistrée");
-    ajouterJournal("Licence créée pour " + client);
+    chargerLicencesServeur();
+    verifierServeur();
 
-    await chargerLicencesServeur();
-
-  } catch (err) {
-    setEtatServeur("offline", "Serveur inaccessible");
-    ajouterJournal("Erreur : " + err.message);
+  } catch (e) {
+    log("Erreur création licence");
   }
 }
 
 /* ======================================================
-MODULE 06
+MODULE 04
 CHARGER LICENCES
 ====================================================== */
 
 async function chargerLicencesServeur() {
+
   try {
-    setEtatServeur("connecting", "Connexion serveur...");
+    const res = await fetch(API_URL + "/licences");
+    const data = await res.json();
 
-    const r = await fetch(API_URL + "/licences");
+    const tbody = document.getElementById("listeClients");
+    tbody.innerHTML = "";
 
-    if (!r.ok) throw new Error("Erreur HTTP");
+    data.forEach(l => {
 
-    licences = await r.json();
+      const tr = document.createElement("tr");
 
-    afficherLicences();
-    majCompteurLicences();
-    majDerniereSync();
+      tr.innerHTML = `
+        <td>${l.logiciel || ""}</td>
+        <td>${l.client || ""}</td>
+        <td>${l.type || ""}</td>
+        <td>${l.machines || "-"}</td>
+        <td>${l.dateExpiration || "-"}</td>
+        <td>ACTIF</td>
+        <td>${l.cle}</td>
+        <td>
+          <button onclick="supprimerLicence('${l.cle}')">Supprimer</button>
+        </td>
+      `;
 
-    setEtatServeur("online", "Synchronisé");
-    ajouterJournal("Synchronisation OK (" + licences.length + ")");
+      tbody.appendChild(tr);
+    });
 
-  } catch (err) {
-    setEtatServeur("offline", "Serveur inaccessible");
-    ajouterJournal("Erreur sync : " + err.message);
+    document.getElementById("compteurLicences").textContent = data.length;
+    document.getElementById("derniereSync").textContent = new Date().toLocaleString();
+
+    log("Synchronisation OK");
+
+  } catch (e) {
+    log("Erreur chargement licences");
   }
 }
 
 /* ======================================================
-MODULE 07
-AFFICHAGE
-====================================================== */
-
-function afficherLicences() {
-  const table = document.getElementById("listeClients");
-  table.innerHTML = "";
-
-  licences.forEach((licence, index) => {
-
-    const ligne = document.createElement("tr");
-
-    ligne.innerHTML = `
-      <td>${licence.client || ""}</td>
-      <td style="font-family:monospace;">${licence.cle || ""}</td>
-      <td>
-        <button onclick="copierLicence(${index})">Copier</button>
-        <button onclick="supprimerLicence('${licence.cle}')">Supprimer</button>
-      </td>
-    `;
-
-    table.appendChild(ligne);
-  });
-}
-
-/* ======================================================
-MODULE 08
-COPIER LICENCE
-====================================================== */
-
-function copierLicence(index) {
-  navigator.clipboard.writeText(licences[index].cle);
-  ajouterJournal("Clé copiée");
-}
-
-/* ======================================================
-MODULE 09
+MODULE 05
 SUPPRIMER LICENCE
 ====================================================== */
 
@@ -208,91 +141,77 @@ async function supprimerLicence(cle) {
   if (!confirm("Supprimer cette licence ?")) return;
 
   try {
-    setEtatServeur("connecting", "Suppression...");
-
-    const reponse = await fetch(API_URL + "/supprimer-licence", {
+    await fetch(API_URL + "/supprimer-licence", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ cle: cle })
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cle })
     });
 
-    if (!reponse.ok) throw new Error("Erreur suppression");
+    log("Licence supprimée : " + cle);
 
-    ajouterJournal("Licence supprimée");
+    chargerLicencesServeur();
+    verifierServeur();
 
-    await chargerLicencesServeur();
-
-  } catch (err) {
-    setEtatServeur("offline", "Erreur suppression");
-    ajouterJournal("Erreur : " + err.message);
+  } catch (e) {
+    log("Erreur suppression");
   }
 }
 
 /* ======================================================
-MODULE 10
-SURVEILLANCE SERVEUR
+MODULE 06
+RECHERCHE CLIENT
 ====================================================== */
 
-async function verifierServeurSilencieux() {
-  try {
-    await fetch(API_URL + "/ping");
-    setEtatServeur("online", "Serveur actif");
-  } catch {
-    setEtatServeur("offline", "Serveur hors ligne");
-  }
+function rechercherClient() {
+
+  const filtre = document.getElementById("rechercheClient").value.toLowerCase();
+  const lignes = document.querySelectorAll("#listeClients tr");
+
+  lignes.forEach(ligne => {
+    ligne.style.display = ligne.innerText.toLowerCase().includes(filtre) ? "" : "none";
+  });
 }
 
 /* ======================================================
-MODULE 11
-DEMARRAGE
+MODULE 07
+JOURNAL
 ====================================================== */
 
-window.onload = function () {
-  ajouterJournal("Licence Manager démarré.");
+function log(message) {
+  const box = document.getElementById("journalActivite");
+  const time = new Date().toLocaleTimeString();
+
+  box.textContent = `[${time}] ${message}\n` + box.textContent;
+}
+
+/* ======================================================
+MODULE 08
+DATES LICENCE (OPTION)
+====================================================== */
+
+function calculerDatesLicence() {
+
+  const type = document.getElementById("typeLicence").value;
+
+  const now = new Date();
+  let expiration = null;
+
+  if (type.includes("mensuelle")) {
+    expiration = new Date(now.setMonth(now.getMonth() + 1));
+  } else if (type.includes("annuelle")) {
+    expiration = new Date(now.setFullYear(now.getFullYear() + 1));
+  }
+
+  document.getElementById("dateActivation").value = new Date().toISOString().split("T")[0];
+  document.getElementById("dateRenouvellement").value = expiration ? expiration.toISOString().split("T")[0] : "A vie";
+}
+
+/* ======================================================
+MODULE 09
+INITIALISATION
+====================================================== */
+
+window.onload = () => {
+  verifierServeur();
   chargerLicencesServeur();
-  setInterval(verifierServeurSilencieux, 10000);
 };
-
-async function verifierLicence(cle) {
-
-  let machine = localStorage.getItem("machine_id");
-
-  if (!machine) {
-    machine = crypto.randomUUID();
-    localStorage.setItem("machine_id", machine);
-  }
-
-  try {
-    const res = await fetch(API_URL + "/valider-licence", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        cle: cle,
-        machine: machine
-      })
-    });
-
-    const data = await res.json();
-
-    if (data.status === "valide") {
-      alert("Licence valide pour " + data.client);
-      return true;
-    }
-
-    if (data.status === "refusee_machine") {
-      alert("Licence déjà utilisée sur un autre appareil");
-      return false;
-    }
-
-    alert("Licence invalide");
-    return false;
-
-  } catch (err) {
-    alert("Serveur inaccessible");
-    return false;
-  }
-}
