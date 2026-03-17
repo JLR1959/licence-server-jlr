@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+
+<meta charset="UTF-8">
+<title>Licence Manager VPIJLR</title>
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1f3a60">
+
+<style>
+
+body{
+font-family:Arial, sans-serif;
+background:#f4f6f9;
+margin:0;
+padding:0;
+}
+
+.container{
+max-width:1100px;
+margin:auto;
+padding:30px;
+}
+
+header{
+background:#1f3a60;
+color:white;
+padding:20px;
+border-radius:8px;
+margin-bottom:20px;
+}
+
+.card{
+background:white;
+padding:20px;
+border-radius:8px;
+margin-bottom:20px;
+box-shadow:0 2px 8px rgba(0,0,0,0.08);
+}
+
+label{
+display:block;
+margin-top:10px;
+font-weight:bold;
+}
+
+input,select{
+width:100%;
+box-sizing:border-box;
+padding:10px;
+margin-top:5px;
+border:1px solid #ccc;
+border-radius:5px;
+}
+
+button{
+padding:10px 15px;
+background:#1f3a60;
+color:white;
+border:none;
+border-radius:5px;
+cursor:pointer;
+margin-right:8px;
+margin-top:10px;
+}
+
+button:hover{
+background:#2b4d7d;
+}
+
+table{
+width:100%;
+border-collapse:collapse;
+margin-top:15px;
+background:white;
+}
+
+th,td{
+padding:10px;
+border-bottom:1px solid #ddd;
+text-align:left;
+vertical-align:top;
+}
+
+th{
+background:#eef2f7;
+}
+
+.status-bar{
+padding:14px 18px;
+border-radius:8px;
+color:white;
+font-weight:bold;
+margin-bottom:20px;
+}
+
+.status-offline{
+background:#b42318;
+}
+
+.status-connecting{
+background:#b54708;
+}
+
+.status-online{
+background:#027a48;
+}
+
+.dashboard{
+display:grid;
+grid-template-columns:repeat(3,1fr);
+gap:15px;
+margin-bottom:20px;
+}
+
+.mini-card{
+background:white;
+border-radius:8px;
+padding:15px;
+box-shadow:0 2px 8px rgba(0,0,0,0.08);
+}
+
+.mini-card h4{
+margin:0 0 8px 0;
+color:#1f3a60;
+}
+
+.mini-value{
+font-size:22px;
+font-weight:bold;
+}
+
+.log-box{
+background:#0f172a;
+color:#e2e8f0;
+border-radius:8px;
+padding:15px;
+min-height:180px;
+max-height:260px;
+overflow-y:auto;
+font-family:monospace;
+font-size:13px;
+white-space:pre-wrap;
+}
+
+.actions-row{
+margin-top:10px;
+margin-bottom:5px;
+}
+
+.small-note{
+color:#475467;
+font-size:13px;
+margin-top:10px;
+}
+
+@media(max-width:900px){
+.dashboard{
+grid-template-columns:1fr;
+}
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="container">
+
+<header>
+<h1>Licence Manager – VPIJLR</h1>
+</header>
+
+<div id="barreEtat" class="status-bar status-connecting">
+Vérification de la connexion serveur...
+</div>
+
+<div class="dashboard">
+
+<div class="mini-card">
+<h4>État serveur</h4>
+<div id="etatServeurTexte" class="mini-value">En attente...</div>
+</div>
+
+<div class="mini-card">
+<h4>Nombre de licences</h4>
+<div id="compteurLicences" class="mini-value">0</div>
+</div>
+
+<div class="mini-card">
+<h4>Dernière synchronisation</h4>
+<div id="derniereSync" class="mini-value" style="font-size:16px;">Aucune</div>
+</div>
+
+</div>
+
+<div class="card">
+
+<h3>Créer une licence</h3>
+
+<label>Logiciel</label>
+<input id="logiciel" value="VPIJLR 2026" readonly>
+
+<label>Client</label>
+<input id="client">
+
+<label>Email client</label>
+<input id="emailClient">
+
+<label>Type licence</label>
+
+<select id="typeLicence" onchange="calculerDatesLicence()">
+<option value="mensuelle_1">Mensuelle (1 poste)</option>
+<option value="mensuelle_5">Mensuelle (5 postes)</option>
+<option value="annuelle_1">Annuelle (1 poste)</option>
+<option value="annuelle_5">Annuelle (5 postes)</option>
+<option value="achat_1">Achat à vie (1 poste)</option>
+<option value="achat_5">Achat à vie (5 postes)</option>
+</select>
+
+<label>Date activation</label>
+<input id="dateActivation" readonly>
+
+<label>Date expiration</label>
+<input id="dateRenouvellement" readonly>
+
+<label>Code activation</label>
+<input id="licenceGeneree" readonly style="font-weight:bold">
+
+<div class="actions-row">
+<button onclick="genererLicence()">Créer licence</button>
+<button onclick="chargerLicencesServeur()">Actualiser le serveur</button>
+</div>
+
+<div class="small-note">
+Bande verte = communication serveur active.<br>
+Bande rouge = problème de connexion ou serveur arrêté.
+</div>
+
+</div>
+
+<div class="card">
+
+<h3>Licences du serveur</h3>
+
+<input id="rechercheClient" placeholder="Rechercher client" onkeyup="rechercherClient()">
+
+<table>
+
+<thead>
+
+<tr>
+<th>Logiciel</th>
+<th>Client</th>
+<th>Type</th>
+<th>Machines</th>
+<th>Expiration</th>
+<th>Statut</th>
+<th>Clé</th>
+<th>Actions</th>
+</tr>
+
+</thead>
+
+<tbody id="listeClients"></tbody>
+
+</table>
+
+</div>
+
+<div class="card">
+
+<h3>Activité en direct</h3>
+
+<div id="journalActivite" class="log-box"></div>
+
+</div>
+
+</div>
+
+<script src="licenceManager.js"></script>
+
+<script>
+
+if("serviceWorker" in navigator){
+navigator.serviceWorker.register("service-worker.js")
+}
+
+</script>
+
+</body>
+</html>
