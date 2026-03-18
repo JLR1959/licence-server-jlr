@@ -1,12 +1,18 @@
-
 /* ======================================================
-SERVEUR LICENCE JLR — VERSION STABLE RENDER
+MODULE 01
+IMPORTS
 ====================================================== */
 
 const express = require("express");
 const cors = require("cors");
 const fs = require("fs");
 const path = require("path");
+const fetch = require("node-fetch"); // ⚠️ requis sur Render
+
+/* ======================================================
+MODULE 02
+INITIALISATION
+====================================================== */
 
 const app = express();
 
@@ -14,7 +20,8 @@ app.use(cors());
 app.use(express.json());
 
 /* ======================================================
-FICHIER LICENCES
+MODULE 03
+FICHIER STOCKAGE LICENCES
 ====================================================== */
 
 const DATA_FILE = path.join(__dirname, "licences.json");
@@ -23,7 +30,7 @@ function chargerLicences() {
   try {
     if (!fs.existsSync(DATA_FILE)) return [];
     return JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
-  } catch {
+  } catch (e) {
     return [];
   }
 }
@@ -33,7 +40,8 @@ function sauvegarderLicences(data) {
 }
 
 /* ======================================================
-ROUTE TEST
+MODULE 04
+ROUTE RACINE
 ====================================================== */
 
 app.get("/", (req, res) => {
@@ -41,27 +49,42 @@ app.get("/", (req, res) => {
 });
 
 /* ======================================================
-API STATUS
+MODULE 05
+ETAT SERVEUR
 ====================================================== */
 
 app.get("/api", (req, res) => {
+
   const licences = chargerLicences();
+
   res.json({
     status: "OK",
     licences: licences.length,
     date: new Date()
   });
+
 });
 
 /* ======================================================
-LICENCES
+MODULE 06
+LISTER LICENCES
 ====================================================== */
 
 app.get("/licences", (req, res) => {
-  res.json(chargerLicences());
+
+  const licences = chargerLicences();
+
+  res.json(licences);
+
 });
 
+/* ======================================================
+MODULE 07
+AJOUT LICENCE
+====================================================== */
+
 app.post("/licences", (req, res) => {
+
   const licences = chargerLicences();
   const licence = req.body;
 
@@ -70,43 +93,66 @@ app.post("/licences", (req, res) => {
   }
 
   licence.actif = true;
+
   licences.push(licence);
+
   sauvegarderLicences(licences);
 
   res.json({ succes: true, licence });
+
 });
 
+/* ======================================================
+MODULE 08
+SUPPRIMER LICENCE
+====================================================== */
+
 app.post("/supprimer-licence", (req, res) => {
+
   let licences = chargerLicences();
   const { cle } = req.body;
 
   licences = licences.filter(l => l.cle !== cle);
+
   sauvegarderLicences(licences);
 
   res.json({ succes: true });
+
 });
 
+/* ======================================================
+MODULE 09
+TOGGLE LICENCE
+====================================================== */
+
 app.post("/toggle-licence", (req, res) => {
+
   let licences = chargerLicences();
   const { cle } = req.body;
 
   const index = licences.findIndex(l => l.cle === cle);
 
-  if (index === -1) return res.json({ ok: false });
+  if (index === -1) {
+    return res.json({ ok: false });
+  }
 
   licences[index].actif = !licences[index].actif;
+
   sauvegarderLicences(licences);
 
   res.json({ ok: true, actif: licences[index].actif });
+
 });
 
 /* ======================================================
-VERIFICATION LICENCE
+MODULE 10
+VERIFIER LICENCE
 ====================================================== */
 
 app.post("/verifier-acces", (req, res) => {
 
   const { cle } = req.body;
+
   const licences = chargerLicences();
 
   const licence = licences.find(l => l.cle === cle);
@@ -117,44 +163,43 @@ app.post("/verifier-acces", (req, res) => {
 
   res.json({
     autorise: licence.actif !== false,
-    licence
+    licence: licence
   });
 
 });
 
 /* ======================================================
-SYNC CLOUD (CORRIGÉ)
+MODULE 11
+SYNC CLIENT → GITHUB CLOUD (SECURISÉ)
 ====================================================== */
 
 app.post("/sync-client-cloud", async (req, res) => {
 
+  const client = req.body;
+
   try {
-
-    const client = req.body;
-    const token = process.env.GITHUB_TOKEN;
-
-    if (!token) {
-      return res.status(500).json({ erreur: "Token GitHub manquant" });
-    }
 
     const url = "https://api.github.com/repos/JLR1959/VPIJLR-logiciel-client/contents/data.json";
 
-    // Lire fichier GitHub
-    const r = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "User-Agent": "vpijlr"
-      }
-    });
+    const token = process.env.GITHUB_TOKEN;
 
+    if (!token) {
+      return res.status(500).json({ erreur: "Token manquant serveur" });
+    }
+
+    // ==========================
+    // 1. LIRE GITHUB
+    // ==========================
+    const r = await fetch(url);
     const d = await r.json();
 
-    const contenu = JSON.parse(
-      Buffer.from(d.content, "base64").toString()
-    );
+    const contenu = JSON.parse(Buffer.from(d.content, 'base64').toString());
 
     if (!contenu.clients) contenu.clients = [];
 
+    // ==========================
+    // 2. ANTI DOUBLON
+    // ==========================
     const existe = contenu.clients.find(c =>
       c.locataire === client.locataire &&
       c.date === client.date
@@ -164,16 +209,17 @@ app.post("/sync-client-cloud", async (req, res) => {
       contenu.clients.push(client);
     }
 
-    // Sauvegarde GitHub
+    // ==========================
+    // 3. SAUVEGARDE
+    // ==========================
     await fetch(url, {
       method: "PUT",
       headers: {
         Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-        "User-Agent": "vpijlr"
+        "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        message: "sync client cloud",
+        message: "sync licence → cloud",
         content: Buffer.from(JSON.stringify(contenu, null, 2)).toString("base64"),
         sha: d.sha
       })
@@ -182,18 +228,19 @@ app.post("/sync-client-cloud", async (req, res) => {
     res.json({ ok: true });
 
   } catch (e) {
-    console.error("ERREUR CLOUD :", e);
+    console.error(e);
     res.status(500).json({ erreur: true });
   }
 
 });
 
 /* ======================================================
-PORT RENDER
+MODULE 12
+DEMARRAGE SERVEUR
 ====================================================== */
 
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log("SERVEUR LICENCE JLR ACTIF sur port " + PORT);
+  console.log("Serveur licence démarré sur port " + PORT);
 });

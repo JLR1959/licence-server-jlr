@@ -1,12 +1,10 @@
 /* ======================================================
-MODULE 01
-CONFIGURATION SERVEUR
+CONFIG SERVEUR
 ====================================================== */
 
 const API_URL = "https://licence-server-jlr-eui5.onrender.com";
 
 /* ======================================================
-MODULE 02
 ETAT SERVEUR
 ====================================================== */
 
@@ -21,13 +19,16 @@ async function verifierServeur() {
   try {
 
     const res = await fetch(API_URL + "/api");
+
+    if (!res.ok) throw new Error("Serveur KO");
+
     const data = await res.json();
 
     barre.className = "status-bar status-online";
     barre.textContent = "Serveur connecté";
     texte.textContent = "EN LIGNE";
 
-    document.getElementById("compteurLicences").textContent = data.licences;
+    document.getElementById("compteurLicences").textContent = data.licences || 0;
     document.getElementById("derniereSync").textContent = new Date().toLocaleString();
 
   } catch (e) {
@@ -36,12 +37,13 @@ async function verifierServeur() {
     barre.textContent = "Serveur hors ligne";
     texte.textContent = "OFFLINE";
 
+    console.error("ERREUR SERVEUR :", e);
+
   }
 }
 
 /* ======================================================
-MODULE 03
-GENERER LICENCE + SYNC CLOUD
+GENERER LICENCE
 ====================================================== */
 
 function genererCle() {
@@ -79,44 +81,56 @@ async function genererLicence() {
 
   try {
 
-    await fetch(API_URL + "/licences", {
+    // ==========================
+    // CREATION LICENCE
+    // ==========================
+    const res = await fetch(API_URL + "/licences", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(licence)
     });
+
+    if (!res.ok) throw new Error("Erreur création licence");
 
     document.getElementById("licenceGeneree").value = cle;
 
     log("Licence créée : " + cle);
 
     // ==========================
-    // SYNC CLOUD
+    // SYNC CLOUD (PROTÉGÉ)
     // ==========================
-    await fetch(API_URL + "/sync-client-cloud", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        locataire: client,
-        adresse: "Licence Manager",
-        date: new Date().toISOString().split("T")[0]
-      })
-    });
+    try {
 
-    log("✔ Client envoyé vers cloud");
+      await fetch(API_URL + "/sync-client-cloud", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          locataire: client,
+          adresse: "Licence Manager",
+          date: new Date().toISOString().split("T")[0]
+        })
+      });
+
+      log("✔ Sync cloud OK");
+
+    } catch (e) {
+      log("⚠ Cloud non disponible (ok en démo)");
+    }
 
     chargerLicencesServeur();
     verifierServeur();
 
   } catch (e) {
+
     console.error(e);
     log("Erreur création licence");
+
   }
 }
 
 /* ======================================================
-MODULE 04
 CHARGER LICENCES
 ====================================================== */
 
@@ -125,6 +139,9 @@ async function chargerLicencesServeur() {
   try {
 
     const res = await fetch(API_URL + "/licences");
+
+    if (!res.ok) throw new Error("Erreur API");
+
     const data = await res.json();
 
     const tbody = document.getElementById("listeClients");
@@ -133,11 +150,6 @@ async function chargerLicencesServeur() {
     data.forEach(l => {
 
       const etat = verifierExpirationLicence(l);
-
-      // désactivation automatique
-      if (etat.statut === "EXPIRÉE" && l.actif !== false) {
-        toggleLicence(l.cle);
-      }
 
       const tr = document.createElement("tr");
 
@@ -177,13 +189,13 @@ async function chargerLicencesServeur() {
 
   } catch (e) {
 
+    console.error(e);
     log("Erreur chargement licences");
 
   }
 }
 
 /* ======================================================
-MODULE 05
 SUPPRIMER LICENCE
 ====================================================== */
 
@@ -212,7 +224,6 @@ async function supprimerLicence(cle) {
 }
 
 /* ======================================================
-MODULE 06
 TOGGLE LICENCE
 ====================================================== */
 
@@ -240,131 +251,23 @@ async function toggleLicence(cle){
 }
 
 /* ======================================================
-MODULE 07
-RECHERCHE CLIENT
-====================================================== */
-
-function rechercherClient() {
-
-  const filtre = document.getElementById("rechercheClient").value.toLowerCase();
-  const lignes = document.querySelectorAll("#listeClients tr");
-
-  lignes.forEach(ligne => {
-    ligne.style.display = ligne.innerText.toLowerCase().includes(filtre) ? "" : "none";
-  });
-}
-
-/* ======================================================
-MODULE 08
 JOURNAL
 ====================================================== */
 
 function log(message) {
   const box = document.getElementById("journalActivite");
   const time = new Date().toLocaleTimeString();
-
   box.textContent = `[${time}] ${message}\n` + box.textContent;
 }
 
 /* ======================================================
-MODULE 09
-CALCUL DATES
-====================================================== */
-
-function calculerDatesLicence() {
-
-  const type = document.getElementById("typeLicence").value;
-  const champActivation = document.getElementById("dateActivation");
-  const champExpiration = document.getElementById("dateExpiration");
-
-  let dateActivation = champActivation.value;
-
-  if (!dateActivation) {
-    dateActivation = new Date().toISOString().split("T")[0];
-    champActivation.value = dateActivation;
-  }
-
-  const base = new Date(dateActivation);
-  let expiration = null;
-
-  if (type.includes("mensuelle")) {
-    expiration = new Date(base);
-    expiration.setMonth(expiration.getMonth() + 1);
-  }
-
-  if (type.includes("annuelle")) {
-    expiration = new Date(base);
-    expiration.setFullYear(expiration.getFullYear() + 1);
-  }
-
-  if (type.includes("achat")) {
-    champExpiration.value = "A vie";
-    return;
-  }
-
-  if (expiration) {
-    champExpiration.value = expiration.toISOString().split("T")[0];
-  }
-}
-
-/* ======================================================
-MODULE 10
-VERIFICATION EXPIRATION
-====================================================== */
-
-function verifierExpirationLicence(licence){
-
-  if(!licence.dateExpiration || licence.dateExpiration === "A vie"){
-    return {
-      statut: "ACTIF",
-      couleur: "#027a48",
-      texte: "Valide"
-    };
-  }
-
-  const maintenant = new Date();
-  const expiration = new Date(licence.dateExpiration);
-
-  const diff = expiration - maintenant;
-  const jours = Math.floor(diff / (1000 * 60 * 60 * 24));
-
-  if(diff <= 0){
-    return {
-      statut: "EXPIRÉE",
-      couleur: "#b42318",
-      texte: "Expirée"
-    };
-  }
-
-  if(jours <= 7){
-    return {
-      statut: "ALERTE",
-      couleur: "#b54708",
-      texte: jours + " jours restants"
-    };
-  }
-
-  return {
-    statut: "ACTIF",
-    couleur: "#027a48",
-    texte: jours + " jours restants"
-  };
-}
-
-/* ======================================================
-MODULE 11
-AUTO SYNCHRO
+INIT
 ====================================================== */
 
 window.onload = () => {
 
   verifierServeur();
   chargerLicencesServeur();
-
-  calculerDatesLicence();
-
-  document.getElementById("typeLicence").addEventListener("change", calculerDatesLicence);
-  document.getElementById("dateActivation").addEventListener("change", calculerDatesLicence);
 
   setInterval(() => {
     chargerLicencesServeur();
