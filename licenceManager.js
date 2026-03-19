@@ -3,7 +3,20 @@
 // ===============================
 
 let licences = [];
-let serveurURL = "https://licence-server-jlr.onrender.com";
+let serveurURL = "https://licence-server-jlr-0jex.onrender.com";
+
+// ===============================
+// KEEP ALIVE RENDER (ANTI SLEEP)
+// ===============================
+function keepAlive(){
+
+fetch(serveurURL + "/ping?t=" + Date.now())
+.catch(()=>{});
+
+}
+
+// ping toutes les 5 minutes
+setInterval(keepAlive, 300000);
 
 // ===============================
 // API FETCH CENTRALISÉ (ROBUSTE)
@@ -12,7 +25,7 @@ async function apiFetch(endpoint, options = {}){
 
 try{
 
-const res = await fetch(serveurURL + endpoint, {
+const res = await fetch(serveurURL + endpoint + "?t=" + Date.now(), {
 ...options,
 headers: {
 "Content-Type": "application/json",
@@ -50,7 +63,7 @@ setStatus("connecting", "Connexion serveur...");
 
 try{
 
-// Réveil Render
+// réveil Render
 await apiFetch("/ping");
 await new Promise(r => setTimeout(r, 800));
 
@@ -298,7 +311,7 @@ window.addEventListener("load", () => {
 setDatesAuto();
 verifierServeur();
 
-// refresh + réveil Render
-setInterval(verifierServeur, 5000);
+// ping + refresh intelligent
+setInterval(verifierServeur, 10000);
 
 });
