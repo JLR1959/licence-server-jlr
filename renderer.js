@@ -1,26 +1,48 @@
-const axios = require('axios');
 
-// Récupérer le bouton et le champ de texte
+// ===============================
+// VALIDATION LICENCE (FRONTEND)
+// ===============================
+
 const validateButton = document.getElementById('validateLicenseBtn');
 const resultElement = document.getElementById('result');
 
-// Écouter le clic sur le bouton
 validateButton.addEventListener('click', async () => {
-  const licenseKey = document.getElementById('licenseKey').value;
 
-  try {
-    // Envoyer la clé de licence au serveur distant
-    const response = await axios.post('https://licence-server-jlr.onrender.com/validate', {
-      licenseKey: licenseKey
-    });
+const licenseKey = document.getElementById('licenseKey').value;
 
-    // Afficher le résultat dans l'interface utilisateur
-    if (response.data.status === 'valid') {
-      resultElement.innerText = 'Licence validée avec succès';
-    } else {
-      resultElement.innerText = 'Licence invalide';
-    }
-  } catch (error) {
-    resultElement.innerText = 'Erreur de connexion au serveur';
-  }
+if(!licenseKey){
+resultElement.innerText = "Entrer une licence";
+return;
+}
+
+try{
+
+const res = await fetch('https://licence-server-jlr.onrender.com/validate', {
+method: 'POST',
+headers: {
+'Content-Type': 'application/json'
+},
+body: JSON.stringify({
+licenseKey: licenseKey
+})
+});
+
+if(!res.ok){
+throw new Error("Erreur serveur");
+}
+
+const data = await res.json();
+
+if(data.status === 'valid'){
+resultElement.innerText = "Licence validée avec succès";
+}else{
+resultElement.innerText = "Licence invalide";
+}
+
+}catch(error){
+
+resultElement.innerText = "Erreur connexion serveur";
+
+}
+
 });

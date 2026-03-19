@@ -1,3 +1,7 @@
+/* ======================================================
+SERVEUR LICENCE JLR — VERSION COMPLETE FINALE
+====================================================== */
+
 const express = require("express")
 const fs = require("fs")
 const cors = require("cors")
@@ -7,7 +11,7 @@ const app = express()
 app.use(cors())
 app.use(express.json())
 
-const PORT = 3000
+const PORT = process.env.PORT || 3000
 const DB = "licences.json"
 
 /* ======================================================
@@ -24,7 +28,7 @@ function lireLicences() {
 
   try {
     return JSON.parse(contenu)
-  } catch (erreur) {
+  } catch {
     return []
   }
 }
@@ -40,7 +44,16 @@ function sauverLicences(data) {
 
 /* ======================================================
 MODULE 03
-PAGE D'ACCUEIL
+PING (RENDER)
+====================================================== */
+
+app.get("/ping", (req, res) => {
+  res.send("OK")
+})
+
+/* ======================================================
+MODULE 04
+ACCUEIL
 ====================================================== */
 
 app.get("/", (req, res) => {
@@ -48,68 +61,120 @@ app.get("/", (req, res) => {
 })
 
 /* ======================================================
-MODULE 04
-LISTE LICENCES
+MODULE 05
+LISTE LICENCES (GET)
 ====================================================== */
 
 app.get("/licences", (req, res) => {
-  const licences = lireLicences()
-  res.json(licences)
+  res.json(lireLicences())
 })
 
 /* ======================================================
-MODULE 05
-AJOUT LICENCE
+MODULE 06
+AJOUT LICENCE (POST)
 ====================================================== */
 
-app.post("/ajouter-licence", (req, res) => {
+app.post("/licences", (req, res) => {
+
   const licence = req.body
 
-  if (!licence.client || !licence.cle) {
+  if (!licence || !licence.client || !licence.cle) {
     return res.status(400).json({
-      erreur: "client ou cle manquant"
+      erreur: "Licence invalide"
     })
   }
 
   const licences = lireLicences()
+
+  // 🔴 Anti doublon
+  const existe = licences.find(l => l.cle === licence.cle)
+
+  if (existe) {
+    return res.status(400).json({
+      erreur: "Licence déjà existante"
+    })
+  }
+
+  licence.actif = true
 
   licences.push(licence)
 
   sauverLicences(licences)
 
   res.json({
-    message: "licence enregistrée",
-    licence: licence
+    succes: true,
+    licence
   })
+
 })
 
 /* ======================================================
-MODULE 06
-SUPPRIMER LICENCE
+MODULE 07
+SUPPRESSION LICENCE (DELETE)
 ====================================================== */
 
-app.post("/supprimer-licence", (req, res) => {
-  const { cle } = req.body
+app.delete("/licences/:cle", (req, res) => {
 
-  if (!cle) {
-    return res.status(400).json({
-      erreur: "cle manquante"
-    })
-  }
+  const cle = req.params.cle
 
   let licences = lireLicences()
+
   licences = licences.filter(l => l.cle !== cle)
 
   sauverLicences(licences)
 
   res.json({
-    message: "licence supprimée"
+    succes: true
   })
+
 })
 
 /* ======================================================
-MODULE 07
-DEMARRER SERVEUR
+MODULE 08
+VALIDATION LICENCE (FRONTEND)
+====================================================== */
+
+app.post("/validate", (req, res) => {
+
+  const { licenseKey } = req.body
+
+  if (!licenseKey) {
+    return res.json({ status: "invalid" })
+  }
+
+  const licences = lireLicences()
+
+  const licence = licences.find(l => l.cle === licenseKey)
+
+  if (!licence) {
+    return res.json({ status: "invalid" })
+  }
+
+  // désactivée
+  if (licence.actif === false) {
+    return res.json({ status: "disabled" })
+  }
+
+  // expiration
+  if (licence.expiration) {
+    const today = new Date()
+    const expiration = new Date(licence.expiration)
+
+    if (expiration < today) {
+      return res.json({ status: "expired" })
+    }
+  }
+
+  res.json({
+    status: "valid",
+    licence
+  })
+
+})
+
+/* ======================================================
+MODULE 09
+DEMARRAGE
 ====================================================== */
 
 app.listen(PORT, () => {

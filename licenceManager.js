@@ -1,22 +1,33 @@
 // ===============================
-// VPIJLR LICENCE MANAGER (RENDER)
+// VPIJLR LICENCE MANAGER (RENDER PRO)
 // ===============================
 
 let licences = [];
 let serveurURL = "https://licence-server-jlr.onrender.com";
 
 // ===============================
-// API FETCH CENTRALISÉ
+// API FETCH CENTRALISÉ (ROBUSTE)
 // ===============================
 async function apiFetch(endpoint, options = {}){
 
-return fetch(serveurURL + endpoint, {
+try{
+
+const res = await fetch(serveurURL + endpoint, {
 ...options,
 headers: {
 "Content-Type": "application/json",
 ...(options.headers || {})
 }
 });
+
+return res;
+
+}catch(e){
+
+log("Erreur réseau: " + e.message);
+throw e;
+
+}
 
 }
 
@@ -31,24 +42,32 @@ box.scrollTop = box.scrollHeight;
 }
 
 // ===============================
-// STATUS SERVEUR
+// STATUS SERVEUR (ANTI SLEEP RENDER)
 // ===============================
 async function verifierServeur(){
 
 setStatus("connecting", "Connexion serveur...");
 
 try{
+
+// Réveil Render
+await apiFetch("/ping");
+await new Promise(r => setTimeout(r, 800));
+
 const res = await apiFetch("/ping");
 
 if(res.ok){
 setStatus("online", "Serveur connecté");
 chargerLicencesServeur();
 }else{
-throw new Error();
+throw new Error("Ping invalide");
 }
 
-}catch{
+}catch(e){
+
 setStatus("offline", "Serveur hors ligne");
+log("Erreur serveur: " + e.message);
+
 }
 
 }
@@ -98,9 +117,7 @@ document.getElementById("dateExpiration").value = expiration;
 // GÉNÉRATION CLÉ
 // ===============================
 function genererCle(){
-
 return "VPI-" + Math.random().toString(36).substring(2,10).toUpperCase();
-
 }
 
 // ===============================
@@ -123,7 +140,6 @@ return;
 }
 
 const cle = genererCle();
-
 document.getElementById("licenceGeneree").value = cle;
 
 const licence = {
@@ -140,10 +156,14 @@ statut: "actif"
 
 try{
 
-await apiFetch("/licences",{
+const res = await apiFetch("/licences",{
 method:"POST",
 body: JSON.stringify(licence)
 });
+
+if(!res.ok){
+throw new Error("Erreur API POST");
+}
 
 log("Licence créée pour " + client);
 
@@ -151,7 +171,7 @@ chargerLicencesServeur();
 
 }catch(e){
 
-log("Erreur création licence");
+log("Erreur création licence: " + e.message);
 
 }
 
@@ -165,7 +185,16 @@ async function chargerLicencesServeur(){
 try{
 
 const res = await apiFetch("/licences");
+
+if(!res.ok){
+throw new Error("Route /licences invalide");
+}
+
 const data = await res.json();
+
+if(!Array.isArray(data)){
+throw new Error("Format JSON invalide");
+}
 
 licences = data;
 
@@ -178,7 +207,7 @@ log("Synchronisation OK");
 
 }catch(e){
 
-log("Erreur chargement serveur");
+log("Erreur chargement serveur: " + e.message);
 
 }
 
@@ -222,13 +251,25 @@ async function supprimerLicence(cle){
 
 if(!confirm("Supprimer cette licence ?")) return;
 
-await apiFetch("/licences/" + cle,{
+try{
+
+const res = await apiFetch("/licences/" + cle,{
 method:"DELETE"
 });
+
+if(!res.ok){
+throw new Error("Erreur suppression");
+}
 
 log("Licence supprimée");
 
 chargerLicencesServeur();
+
+}catch(e){
+
+log("Erreur suppression: " + e.message);
+
+}
 
 }
 
@@ -242,11 +283,7 @@ const filtre = document.getElementById("rechercheClient").value.toLowerCase();
 const lignes = document.querySelectorAll("#listeClients tr");
 
 lignes.forEach(ligne => {
-
-ligne.style.display = ligne.innerText.toLowerCase().includes(filtre)
-? ""
-: "none";
-
+ligne.style.display = ligne.innerText.toLowerCase().includes(filtre) ? "" : "none";
 });
 
 }
@@ -261,7 +298,7 @@ window.addEventListener("load", () => {
 setDatesAuto();
 verifierServeur();
 
-// ping toutes les 5 secondes (réveille Render)
+// refresh + réveil Render
 setInterval(verifierServeur, 5000);
 
 });

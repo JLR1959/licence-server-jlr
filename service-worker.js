@@ -3,14 +3,15 @@ MODULE 01
 CONFIG VERSION CACHE
 ====================================================== */
 
-const CACHE_NAME = "vpi-cache-v1";
+const CACHE_NAME = "vpi-cache-v2";
 
-/* fichiers à cacher */
+/* fichiers à cacher (adapté à ton projet réel) */
 const FILES_TO_CACHE = [
   "/",
   "/index.html",
-  "/app.js",
-  "/style.css"
+  "/licenceManager.js",
+  "/manifest.json",
+  "/logo_jlr.png"
 ];
 
 /* ======================================================
@@ -55,53 +56,65 @@ self.addEventListener("activate", event => {
 
 /* ======================================================
 MODULE 04
-FETCH (STRATÉGIE PROPRE)
+FETCH (STRATÉGIE INTELLIGENTE)
 ====================================================== */
 
 self.addEventListener("fetch", event => {
 
   const url = new URL(event.request.url);
 
-  /* 🔥 NE JAMAIS CACHER LE SERVEUR LICENCE */
+  /* ======================================================
+  NE JAMAIS CACHER API / SERVEUR RENDER
+  ====================================================== */
   if (url.hostname.includes("onrender.com")) {
     event.respondWith(fetch(event.request));
     return;
   }
 
-  /* 🔥 NE PAS CACHER configClient.js */
-  if (url.pathname.includes("configClient.js")) {
+  /* ======================================================
+  NE PAS CACHER REQUÊTES NON-GET
+  ====================================================== */
+  if (event.request.method !== "GET") {
     event.respondWith(fetch(event.request));
     return;
   }
 
-  /* stratégie cache + fallback réseau */
+  /* ======================================================
+  STRATÉGIE : CACHE FIRST + UPDATE
+  ====================================================== */
   event.respondWith(
 
-    caches.match(event.request).then(response => {
+    caches.match(event.request).then(cachedResponse => {
 
-      if (response) {
-        return response;
+      if (cachedResponse) {
+        return cachedResponse;
       }
 
       return fetch(event.request)
         .then(networkResponse => {
 
-          /* ne pas cacher les requêtes API */
-          if (event.request.method !== "GET") {
+          /* sécuriser cache uniquement si OK */
+          if (!networkResponse || networkResponse.status !== 200) {
             return networkResponse;
           }
 
-          return caches.open(CACHE_NAME).then(cache => {
-            cache.put(event.request, networkResponse.clone());
-            return networkResponse;
+          const responseClone = networkResponse.clone();
+
+          caches.open(CACHE_NAME).then(cache => {
+            cache.put(event.request, responseClone);
           });
+
+          return networkResponse;
 
         })
         .catch(() => {
-          return new Response("Offline", {
+
+          /* fallback offline */
+          return new Response("Mode hors ligne", {
             status: 503,
             statusText: "Offline"
           });
+
         });
 
     })
