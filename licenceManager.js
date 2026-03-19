@@ -1,277 +1,267 @@
-/* ======================================================
-CONFIG SERVEUR
-====================================================== */
+// ===============================
+// VPIJLR LICENCE MANAGER (RENDER)
+// ===============================
 
-const API_URL = "https://licence-server-jlr-eui5.onrender.com";
+let licences = [];
+let serveurURL = "https://licence-server-jlr.onrender.com";
 
-/* ======================================================
-ETAT SERVEUR
-====================================================== */
+// ===============================
+// API FETCH CENTRALISÉ
+// ===============================
+async function apiFetch(endpoint, options = {}){
 
-async function verifierServeur() {
-
-  const barre = document.getElementById("barreEtat");
-  const texte = document.getElementById("etatServeurTexte");
-
-  barre.className = "status-bar status-connecting";
-  texte.textContent = "Connexion...";
-
-  try {
-
-    const res = await fetch(API_URL + "/api");
-
-    if (!res.ok) throw new Error("Serveur KO");
-
-    const data = await res.json();
-
-    barre.className = "status-bar status-online";
-    barre.textContent = "Serveur connecté";
-    texte.textContent = "EN LIGNE";
-
-    document.getElementById("compteurLicences").textContent = data.licences || 0;
-    document.getElementById("derniereSync").textContent = new Date().toLocaleString();
-
-  } catch (e) {
-
-    barre.className = "status-bar status-offline";
-    barre.textContent = "Serveur hors ligne";
-    texte.textContent = "OFFLINE";
-
-    console.error("ERREUR SERVEUR :", e);
-
-  }
+return fetch(serveurURL + endpoint, {
+...options,
+headers: {
+"Content-Type": "application/json",
+...(options.headers || {})
 }
-
-/* ======================================================
-GENERER LICENCE
-====================================================== */
-
-function genererCle() {
-  return "LIC-" + Math.random().toString(36).substring(2, 10).toUpperCase();
-}
-
-async function genererLicence() {
-
-  const client = document.getElementById("client").value.trim();
-  const email = document.getElementById("emailClient").value.trim();
-  const type = document.getElementById("typeLicence").value;
-  const logiciel = document.getElementById("logiciel").value;
-
-  const dateActivation = document.getElementById("dateActivation").value;
-  const dateExpiration = document.getElementById("dateExpiration").value;
-
-  if (!client) {
-    alert("Nom client requis");
-    return;
-  }
-
-  const cle = genererCle();
-
-  const licence = {
-    logiciel,
-    client,
-    email,
-    type,
-    cle,
-    actif: true,
-    dateCreation: new Date().toISOString(),
-    dateActivation,
-    dateExpiration
-  };
-
-  try {
-
-    // ==========================
-    // CREATION LICENCE
-    // ==========================
-    const res = await fetch(API_URL + "/licences", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(licence)
-    });
-
-    if (!res.ok) throw new Error("Erreur création licence");
-
-    document.getElementById("licenceGeneree").value = cle;
-
-    log("Licence créée : " + cle);
-
-    // ==========================
-    // SYNC CLOUD (PROTÉGÉ)
-    // ==========================
-    try {
-
-      await fetch(API_URL + "/sync-client-cloud", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          locataire: client,
-          adresse: "Licence Manager",
-          date: new Date().toISOString().split("T")[0]
-        })
-      });
-
-      log("✔ Sync cloud OK");
-
-    } catch (e) {
-      log("⚠ Cloud non disponible (ok en démo)");
-    }
-
-    chargerLicencesServeur();
-    verifierServeur();
-
-  } catch (e) {
-
-    console.error(e);
-    log("Erreur création licence");
-
-  }
-}
-
-/* ======================================================
-CHARGER LICENCES
-====================================================== */
-
-async function chargerLicencesServeur() {
-
-  try {
-
-    const res = await fetch(API_URL + "/licences");
-
-    if (!res.ok) throw new Error("Erreur API");
-
-    const data = await res.json();
-
-    const tbody = document.getElementById("listeClients");
-    tbody.innerHTML = "";
-
-    data.forEach(l => {
-
-      const etat = verifierExpirationLicence(l);
-
-      const tr = document.createElement("tr");
-
-      tr.innerHTML = `
-        <td>${l.logiciel || ""}</td>
-        <td>${l.client || ""}</td>
-        <td>${l.type || ""}</td>
-        <td>${l.machines || "-"}</td>
-        <td>
-          ${l.dateExpiration || "-"}
-          <br>
-          <small>${etat.texte}</small>
-        </td>
-        <td style="color:${etat.couleur}; font-weight:bold;">
-          ${etat.statut}
-        </td>
-        <td>${l.cle}</td>
-        <td>
-          <button onclick="toggleLicence('${l.cle}')">
-            ${l.actif === false ? "Activer" : "Désactiver"}
-          </button>
-
-          <button onclick="supprimerLicence('${l.cle}')">
-            Supprimer
-          </button>
-        </td>
-      `;
-
-      tbody.appendChild(tr);
-
-    });
-
-    document.getElementById("compteurLicences").textContent = data.length;
-    document.getElementById("derniereSync").textContent = new Date().toLocaleString();
-
-    log("Synchronisation OK");
-
-  } catch (e) {
-
-    console.error(e);
-    log("Erreur chargement licences");
-
-  }
-}
-
-/* ======================================================
-SUPPRIMER LICENCE
-====================================================== */
-
-async function supprimerLicence(cle) {
-
-  if (!confirm("Supprimer cette licence ?")) return;
-
-  try {
-
-    await fetch(API_URL + "/supprimer-licence", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cle })
-    });
-
-    log("Licence supprimée : " + cle);
-
-    chargerLicencesServeur();
-    verifierServeur();
-
-  } catch (e) {
-
-    log("Erreur suppression");
-
-  }
-}
-
-/* ======================================================
-TOGGLE LICENCE
-====================================================== */
-
-async function toggleLicence(cle){
-
-  try{
-
-    await fetch(API_URL + "/toggle-licence",{
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ cle })
-    });
-
-    log("Licence modifiée : " + cle);
-
-    chargerLicencesServeur();
-    verifierServeur();
-
-  } catch(e){
-
-    log("Erreur toggle licence");
-
-  }
+});
 
 }
 
-/* ======================================================
-JOURNAL
-====================================================== */
-
-function log(message) {
-  const box = document.getElementById("journalActivite");
-  const time = new Date().toLocaleTimeString();
-  box.textContent = `[${time}] ${message}\n` + box.textContent;
+// ===============================
+// LOG ACTIVITÉ
+// ===============================
+function log(msg){
+const box = document.getElementById("journalActivite");
+const time = new Date().toLocaleTimeString();
+box.innerHTML += `[${time}] ${msg}\n`;
+box.scrollTop = box.scrollHeight;
 }
 
-/* ======================================================
-INIT
-====================================================== */
+// ===============================
+// STATUS SERVEUR
+// ===============================
+async function verifierServeur(){
 
-window.onload = () => {
+setStatus("connecting", "Connexion serveur...");
 
-  verifierServeur();
-  chargerLicencesServeur();
+try{
+const res = await apiFetch("/ping");
 
-  setInterval(() => {
-    chargerLicencesServeur();
-    verifierServeur();
-  }, 5000);
+if(res.ok){
+setStatus("online", "Serveur connecté");
+chargerLicencesServeur();
+}else{
+throw new Error();
+}
 
+}catch{
+setStatus("offline", "Serveur hors ligne");
+}
+
+}
+
+function setStatus(type, texte){
+
+const barre = document.getElementById("barreEtat");
+const label = document.getElementById("etatServeurTexte");
+
+barre.className = "status-bar status-" + type;
+barre.innerText = texte;
+label.innerText = texte;
+
+}
+
+// ===============================
+// DATES AUTOMATIQUES
+// ===============================
+function setDatesAuto(){
+
+const today = new Date();
+const activation = today.toISOString().split("T")[0];
+
+document.getElementById("dateActivation").value = activation;
+
+const type = document.getElementById("typeLicence").value;
+
+let expirationDate = new Date(today);
+
+if(type.includes("mensuelle")){
+expirationDate.setMonth(expirationDate.getMonth() + 1);
+}
+else if(type.includes("annuelle")){
+expirationDate.setFullYear(expirationDate.getFullYear() + 1);
+}
+else if(type.includes("achat")){
+expirationDate.setFullYear(expirationDate.getFullYear() + 10);
+}
+
+const expiration = expirationDate.toISOString().split("T")[0];
+
+document.getElementById("dateExpiration").value = expiration;
+
+}
+
+// ===============================
+// GÉNÉRATION CLÉ
+// ===============================
+function genererCle(){
+
+return "VPI-" + Math.random().toString(36).substring(2,10).toUpperCase();
+
+}
+
+// ===============================
+// CRÉER LICENCE
+// ===============================
+async function genererLicence(){
+
+setDatesAuto();
+
+const logiciel = document.getElementById("logiciel").value;
+const client = document.getElementById("client").value;
+const email = document.getElementById("emailClient").value;
+const type = document.getElementById("typeLicence").value;
+const activation = document.getElementById("dateActivation").value;
+const expiration = document.getElementById("dateExpiration").value;
+
+if(!client){
+alert("Client requis");
+return;
+}
+
+const cle = genererCle();
+
+document.getElementById("licenceGeneree").value = cle;
+
+const licence = {
+logiciel,
+client,
+email,
+type,
+activation,
+expiration,
+cle,
+machines: type.includes("_5") ? 5 : 1,
+statut: "actif"
 };
+
+try{
+
+await apiFetch("/licences",{
+method:"POST",
+body: JSON.stringify(licence)
+});
+
+log("Licence créée pour " + client);
+
+chargerLicencesServeur();
+
+}catch(e){
+
+log("Erreur création licence");
+
+}
+
+}
+
+// ===============================
+// CHARGER LICENCES
+// ===============================
+async function chargerLicencesServeur(){
+
+try{
+
+const res = await apiFetch("/licences");
+const data = await res.json();
+
+licences = data;
+
+afficherLicences();
+
+document.getElementById("compteurLicences").innerText = licences.length;
+document.getElementById("derniereSync").innerText = new Date().toLocaleString();
+
+log("Synchronisation OK");
+
+}catch(e){
+
+log("Erreur chargement serveur");
+
+}
+
+}
+
+// ===============================
+// AFFICHAGE TABLEAU
+// ===============================
+function afficherLicences(){
+
+const tbody = document.getElementById("listeClients");
+tbody.innerHTML = "";
+
+licences.forEach(l => {
+
+const tr = document.createElement("tr");
+
+tr.innerHTML = `
+<td>${l.logiciel}</td>
+<td>${l.client}</td>
+<td>${l.type}</td>
+<td>${l.machines}</td>
+<td>${l.expiration}</td>
+<td>${l.statut}</td>
+<td>${l.cle}</td>
+<td>
+<button onclick="supprimerLicence('${l.cle}')">Supprimer</button>
+</td>
+`;
+
+tbody.appendChild(tr);
+
+});
+
+}
+
+// ===============================
+// SUPPRESSION
+// ===============================
+async function supprimerLicence(cle){
+
+if(!confirm("Supprimer cette licence ?")) return;
+
+await apiFetch("/licences/" + cle,{
+method:"DELETE"
+});
+
+log("Licence supprimée");
+
+chargerLicencesServeur();
+
+}
+
+// ===============================
+// RECHERCHE
+// ===============================
+function rechercherClient(){
+
+const filtre = document.getElementById("rechercheClient").value.toLowerCase();
+
+const lignes = document.querySelectorAll("#listeClients tr");
+
+lignes.forEach(ligne => {
+
+ligne.style.display = ligne.innerText.toLowerCase().includes(filtre)
+? ""
+: "none";
+
+});
+
+}
+
+// ===============================
+// EVENTS
+// ===============================
+document.getElementById("typeLicence").addEventListener("change", setDatesAuto);
+
+window.addEventListener("load", () => {
+
+setDatesAuto();
+verifierServeur();
+
+// ping toutes les 5 secondes (réveille Render)
+setInterval(verifierServeur, 5000);
+
+});
