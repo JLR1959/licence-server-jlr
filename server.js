@@ -1,5 +1,6 @@
+
 /* ======================================================
-SERVEUR LICENCE JLR — VERSION STRIPE + LICENCE AUTO
+SERVEUR LICENCES — STRIPE + INTERAC MANUEL
 ====================================================== */
 
 const express = require("express");
@@ -7,16 +8,29 @@ const cors = require("cors");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
-const stripe = require("stripe")("sk_live_xxx"); // 🔴 MET TA CLÉ STRIPE ICI
+
+/* ======================================================
+MODULE 01 — INIT APP
+====================================================== */
 
 const app = express();
 
 /* ======================================================
-IMPORTANT STRIPE (NE PAS TOUCHER)
+MODULE 02 — STRIPE (LIVE)
 ====================================================== */
+
+// 🔴 MET TA CLÉ LIVE ICI
+const stripe = require("stripe")("pk_live_51T6yJVQUeVbFaSLwacKILTS53bfdMpkYnBmQ4LBWObKOhr3um2SK4PiS7CGN2xzF5sbKY5JhjbfmFL1UBzkXNgNq00utDK9LyV");
+
+/* ======================================================
+MODULE 03 — WEBHOOK STRIPE
+====================================================== */
+
 app.post("/stripe-webhook",
     express.raw({ type: "application/json" }),
     (req, res) => {
+
+        console.log("📩 Webhook reçu");
 
         const sig = req.headers["stripe-signature"];
 
@@ -26,61 +40,57 @@ app.post("/stripe-webhook",
             event = stripe.webhooks.constructEvent(
                 req.body,
                 sig,
-                "whsec_4k0B8JfTAKSeV8MLZwCnbVP3uEacMrcU"
+                "whsec_1M1Hc1ved6o6leguAM6FSvpQ5i0aD1NP"
             );
         } catch (err) {
-            console.error("❌ Erreur Stripe :", err.message);
+            console.error("❌ Erreur webhook :", err.message);
             return res.status(400).send(`Webhook Error: ${err.message}`);
         }
 
-        /* ======================================================
-        MODULE 01
-        GENERATION LICENCE AUTOMATIQUE
-        ====================================================== */
+        console.log("📌 Event Stripe :", event.type);
 
         if (event.type === "checkout.session.completed") {
 
-            const session = event.data.object;
+            console.log("💰 Paiement Stripe confirmé");
 
-            const licences = chargerLicences();
+            const session = event.data.object;
 
             const cle = genererLicence42();
 
-            const licence = {
+            const licences = chargerLicences();
+
+            licences.push({
                 client: session.customer_details?.name || "Client Stripe",
                 email: session.customer_details?.email || "",
                 cle: cle,
-                activation: new Date().toISOString(),
-                expiration: null,
+                date: new Date().toISOString(),
                 actif: true,
                 source: "stripe"
-            };
+            });
 
-            licences.push(licence);
             sauvegarderLicences(licences);
 
-            console.log("✅ LICENCE CRÉÉE :", cle);
+            console.log("✅ LICENCE STRIPE CRÉÉE :", cle);
         }
 
         res.json({ received: true });
 });
 
 /* ======================================================
-MIDDLEWARE NORMAL (APRES STRIPE)
+MODULE 04 — MIDDLEWARE
 ====================================================== */
 
 app.use(cors());
 app.use(express.json());
 
 /* ======================================================
-CONFIG
+MODULE 05 — FICHIER
 ====================================================== */
 
 const DATA_FILE = path.join(__dirname, "licences.json");
 
 /* ======================================================
-MODULE 02
-UTILS
+MODULE 06 — UTILITAIRES
 ====================================================== */
 
 function chargerLicences() {
@@ -96,66 +106,113 @@ function sauvegarderLicences(data) {
     fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), "utf8");
 }
 
-/* ======================================================
-MODULE 03
-GENERATION LICENCE 42 CARACTERES
-====================================================== */
-
 function genererLicence42() {
     return crypto.randomBytes(21).toString("hex");
 }
 
 /* ======================================================
-MODULE 04
-PING
+MODULE 07 — INTERAC PAGE CLIENT
+====================================================== */
+
+app.get("/interac", (req, res) => {
+
+    res.send(`
+    <html>
+    <head>
+        <title>Paiement Interac</title>
+        <style>
+            body { font-family: Arial; text-align:center; padding:40px; }
+            input { padding:10px; margin:10px; width:250px; }
+            button { padding:12px 20px; background:#0074d4; color:white; border:none; }
+        </style>
+    </head>
+    <body>
+
+        <h2>Paiement par Interac</h2>
+
+        <p>Envoyez 49$ à :</p>
+        <h3>TONEMAIL@EXEMPLE.COM</h3>
+
+        <p>Message à inclure :</p>
+        <b>VOTRE EMAIL</b>
+
+        <hr>
+
+        <h3>J’ai envoyé le paiement</h3>
+
+        <input id="email" placeholder="Votre email"><br>
+        <button onclick="valider()">Valider mon paiement</button>
+
+        <p id="resultat"></p>
+
+        <script>
+        function valider() {
+            fetch('/interac-confirm', {
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({
+                    email: document.getElementById('email').value
+                })
+            })
+            .then(r=>r.json())
+            .then(data=>{
+                document.getElementById('resultat').innerHTML =
+                    "Licence générée : " + data.cle;
+            });
+        }
+        </script>
+
+    </body>
+    </html>
+    `);
+});
+
+/* ======================================================
+MODULE 08 — CONFIRMATION INTERAC
+====================================================== */
+
+app.post("/interac-confirm", (req, res) => {
+
+    const { email } = req.body;
+
+    const cle = genererLicence42();
+
+    const licences = chargerLicences();
+
+    licences.push({
+        client: "Interac",
+        email: email,
+        cle: cle,
+        date: new Date().toISOString(),
+        actif: true,
+        source: "interac"
+    });
+
+    sauvegarderLicences(licences);
+
+    console.log("💸 LICENCE INTERAC CRÉÉE :", cle);
+
+    res.json({ cle });
+});
+
+/* ======================================================
+MODULE 09 — ROUTES
 ====================================================== */
 
 app.get("/ping", (req, res) => {
     res.send("OK");
 });
 
-/* ======================================================
-MODULE 05
-LISTE LICENCES
-====================================================== */
-
 app.get("/licences", (req, res) => {
     res.json(chargerLicences());
 });
 
 /* ======================================================
-MODULE 06
-VALIDATION
-====================================================== */
-
-app.post("/validate", (req, res) => {
-
-    const { licenseKey } = req.body;
-
-    const licences = chargerLicences();
-    const licence = licences.find(l => l.cle === licenseKey);
-
-    if (!licence) {
-        return res.json({ status: "invalid" });
-    }
-
-    if (licence.actif === false) {
-        return res.json({ status: "disabled" });
-    }
-
-    res.json({
-        status: "valid",
-        licence
-    });
-});
-
-/* ======================================================
-MODULE 07
-PORT
+MODULE 10 — SERVEUR
 ====================================================== */
 
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-    console.log("🚀 Serveur licence + Stripe actif sur port " + PORT);
+    console.log("🚀 Serveur actif sur port " + PORT);
 });
