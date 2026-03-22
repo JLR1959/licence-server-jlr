@@ -18,6 +18,11 @@ if (!process.env.STRIPE_SECRET_KEY) {
   process.exit(1);
 }
 
+if (!process.env.STRIPE_WEBHOOK_SECRET) {
+  console.error("ERREUR: STRIPE_WEBHOOK_SECRET manquant");
+  process.exit(1);
+}
+
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 /* ======================================================
@@ -27,7 +32,15 @@ INIT
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+
+/* ⚠️ IMPORTANT : JSON PARTOUT SAUF WEBHOOK */
+app.use((req, res, next) => {
+  if (req.originalUrl === "/webhook") {
+    next();
+  } else {
+    express.json()(req, res, next);
+  }
+});
 
 /* ======================================================
 MODULE 04
@@ -102,21 +115,6 @@ app.get("/licences", (req, res) => {
 
 /* ======================================================
 MODULE 08
-TEST MANUEL
-====================================================== */
-
-app.get("/test-webhook", (req, res) => {
-
-  const licence = genererCleLicence();
-  enregistrerLicence(licence);
-
-  console.log("TEST LICENCE :", licence);
-
-  res.send("Licence générée : " + licence);
-});
-
-/* ======================================================
-MODULE 09
 STRIPE CHECKOUT
 ====================================================== */
 
@@ -144,15 +142,15 @@ app.post("/create-checkout-session", async (req, res) => {
     res.json({ url: session.url });
 
   } catch (err) {
-    console.error(err);
+    console.error("Erreur Stripe :", err);
     res.status(500).send("Erreur Stripe");
   }
 
 });
 
 /* ======================================================
-MODULE 10
-WEBHOOK STRIPE
+MODULE 09
+WEBHOOK STRIPE (PRODUCTION)
 ====================================================== */
 
 app.post("/webhook", express.raw({ type: "application/json" }), (req, res) => {
@@ -168,14 +166,12 @@ app.post("/webhook", express.raw({ type: "application/json" }), (req, res) => {
       process.env.STRIPE_WEBHOOK_SECRET
     );
   } catch (err) {
-    console.error("Webhook invalide");
-    return res.status(400).send();
+    console.error("Webhook invalide :", err.message);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  if (
-    event.type === "checkout.session.completed" ||
-    event.type === "checkout.session.expired"
-  ) {
+  /* 🎯 UNIQUEMENT PAIEMENT RÉUSSI */
+  if (event.type === "checkout.session.completed") {
 
     const licence = genererCleLicence();
     enregistrerLicence(licence);
@@ -187,7 +183,7 @@ app.post("/webhook", express.raw({ type: "application/json" }), (req, res) => {
 });
 
 /* ======================================================
-MODULE 11
+MODULE 10
 DEMARRAGE
 ====================================================== */
 
