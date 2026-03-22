@@ -1,13 +1,73 @@
 /* ======================================================
-SERVEUR LICENCE JLR — VERSION COMPLETE STABLE
+SERVEUR LICENCE JLR — VERSION STRIPE + LICENCE AUTO
 ====================================================== */
 
 const express = require("express");
 const cors = require("cors");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
+const stripe = require("stripe")("sk_live_xxx"); // 🔴 MET TA CLÉ STRIPE ICI
 
 const app = express();
+
+/* ======================================================
+IMPORTANT STRIPE (NE PAS TOUCHER)
+====================================================== */
+app.post("/stripe-webhook",
+    express.raw({ type: "application/json" }),
+    (req, res) => {
+
+        const sig = req.headers["stripe-signature"];
+
+        let event;
+
+        try {
+            event = stripe.webhooks.constructEvent(
+                req.body,
+                sig,
+                "whsec_4k0B8JfTAKSeV8MLZwCnbVP3uEacMrcU"
+            );
+        } catch (err) {
+            console.error("❌ Erreur Stripe :", err.message);
+            return res.status(400).send(`Webhook Error: ${err.message}`);
+        }
+
+        /* ======================================================
+        MODULE 01
+        GENERATION LICENCE AUTOMATIQUE
+        ====================================================== */
+
+        if (event.type === "checkout.session.completed") {
+
+            const session = event.data.object;
+
+            const licences = chargerLicences();
+
+            const cle = genererLicence42();
+
+            const licence = {
+                client: session.customer_details?.name || "Client Stripe",
+                email: session.customer_details?.email || "",
+                cle: cle,
+                activation: new Date().toISOString(),
+                expiration: null,
+                actif: true,
+                source: "stripe"
+            };
+
+            licences.push(licence);
+            sauvegarderLicences(licences);
+
+            console.log("✅ LICENCE CRÉÉE :", cle);
+        }
+
+        res.json({ received: true });
+});
+
+/* ======================================================
+MIDDLEWARE NORMAL (APRES STRIPE)
+====================================================== */
 
 app.use(cors());
 app.use(express.json());
@@ -19,210 +79,83 @@ CONFIG
 const DATA_FILE = path.join(__dirname, "licences.json");
 
 /* ======================================================
+MODULE 02
 UTILS
 ====================================================== */
 
-function logServeur(msg){
-  console.log(new Date().toISOString(), "-", msg);
-}
-
 function chargerLicences() {
-  try {
-    if (!fs.existsSync(DATA_FILE)) return [];
-    return JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
-  } catch {
-    return [];
-  }
+    try {
+        if (!fs.existsSync(DATA_FILE)) return [];
+        return JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+    } catch {
+        return [];
+    }
 }
 
 function sauvegarderLicences(data) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), "utf8");
+    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), "utf8");
 }
 
 /* ======================================================
-PING (RENDER)
+MODULE 03
+GENERATION LICENCE 42 CARACTERES
+====================================================== */
+
+function genererLicence42() {
+    return crypto.randomBytes(21).toString("hex");
+}
+
+/* ======================================================
+MODULE 04
+PING
 ====================================================== */
 
 app.get("/ping", (req, res) => {
-  res.send("OK");
+    res.send("OK");
 });
 
 /* ======================================================
-ACCUEIL
-====================================================== */
-
-app.get("/", (req, res) => {
-  res.send("SERVEUR LICENCE JLR ACTIF");
-});
-
-/* ======================================================
-API STATUS
-====================================================== */
-
-app.get("/api", (req, res) => {
-  const licences = chargerLicences();
-  res.json({
-    status: "OK",
-    total: licences.length,
-    date: new Date()
-  });
-});
-
-/* ======================================================
-GET LICENCES
+MODULE 05
+LISTE LICENCES
 ====================================================== */
 
 app.get("/licences", (req, res) => {
-  res.json(chargerLicences());
+    res.json(chargerLicences());
 });
 
 /* ======================================================
-POST LICENCE (CREATE)
-====================================================== */
-
-app.post("/licences", (req, res) => {
-
-  const licences = chargerLicences();
-  const licence = req.body;
-
-  if (!licence || !licence.cle) {
-    return res.status(400).json({ erreur: "Licence invalide" });
-  }
-
-  // Anti doublon
-  const existe = licences.find(l => l.cle === licence.cle);
-
-  if (existe) {
-    return res.status(400).json({ erreur: "Licence déjà existante" });
-  }
-
-  licence.actif = true;
-
-  licences.push(licence);
-  sauvegarderLicences(licences);
-
-  logServeur("Licence créée: " + licence.cle);
-
-  res.json({ succes: true, licence });
-
-});
-
-/* ======================================================
-DELETE LICENCE
-====================================================== */
-
-app.delete("/licences/:cle", (req, res) => {
-
-  const cle = req.params.cle;
-
-  let licences = chargerLicences();
-
-  licences = licences.filter(l => l.cle !== cle);
-
-  sauvegarderLicences(licences);
-
-  logServeur("Licence supprimée: " + cle);
-
-  res.json({ succes: true });
-
-});
-
-/* ======================================================
-TOGGLE ACTIF
-====================================================== */
-
-app.post("/toggle-licence", (req, res) => {
-
-  let licences = chargerLicences();
-  const { cle } = req.body;
-
-  const index = licences.findIndex(l => l.cle === cle);
-
-  if (index === -1) {
-    return res.json({ ok: false });
-  }
-
-  licences[index].actif = !licences[index].actif;
-
-  sauvegarderLicences(licences);
-
-  res.json({
-    ok: true,
-    actif: licences[index].actif
-  });
-
-});
-
-/* ======================================================
-VALIDATION LICENCE (FRONTEND)
+MODULE 06
+VALIDATION
 ====================================================== */
 
 app.post("/validate", (req, res) => {
 
-  const { licenseKey } = req.body;
+    const { licenseKey } = req.body;
 
-  if (!licenseKey) {
-    return res.json({ status: "invalid" });
-  }
+    const licences = chargerLicences();
+    const licence = licences.find(l => l.cle === licenseKey);
 
-  const licences = chargerLicences();
-
-  const licence = licences.find(l => l.cle === licenseKey);
-
-  if (!licence) {
-    return res.json({ status: "invalid" });
-  }
-
-  // Désactivée
-  if (licence.actif === false) {
-    return res.json({ status: "disabled" });
-  }
-
-  // Expiration
-  if (licence.expiration) {
-    const today = new Date();
-    const expiration = new Date(licence.expiration);
-
-    if (expiration < today) {
-      return res.json({ status: "expired" });
+    if (!licence) {
+        return res.json({ status: "invalid" });
     }
-  }
 
-  res.json({
-    status: "valid",
-    licence
-  });
+    if (licence.actif === false) {
+        return res.json({ status: "disabled" });
+    }
 
+    res.json({
+        status: "valid",
+        licence
+    });
 });
 
 /* ======================================================
-VERIFIER ACCES (OPTION API)
-====================================================== */
-
-app.post("/verifier-acces", (req, res) => {
-
-  const { cle } = req.body;
-  const licences = chargerLicences();
-
-  const licence = licences.find(l => l.cle === cle);
-
-  if (!licence) {
-    return res.json({ autorise: false });
-  }
-
-  res.json({
-    autorise: licence.actif !== false,
-    licence
-  });
-
-});
-
-/* ======================================================
-PORT (RENDER)
+MODULE 07
+PORT
 ====================================================== */
 
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  logServeur("SERVEUR LICENCE JLR ACTIF sur port " + PORT);
+    console.log("🚀 Serveur licence + Stripe actif sur port " + PORT);
 });

@@ -3,6 +3,15 @@
 
 <head>
 
+<div class="card">
+    <h3>Réactivation de licence</h3>
+    <label for="newLicense">Nouveau numéro de licence</label>
+    <input type="text" id="newLicense" placeholder="Entrez votre nouveau numéro de licence" />
+    <button onclick="activateNewLicense()">Activer le nouveau code</button>
+    <p id="activationMessage" class="error"></p>
+</div>
+
+
 <meta charset="UTF-8">
 <title>Licence Manager VPIJLR</title>
 
@@ -180,8 +189,9 @@ grid-template-columns:1fr;
 
 <header>
 <img src="logo_jlr.png" class="logo">
-<h1>Licence Manager – VPIJLR</h1>
+<h1>Licence Manager – VPIJLR 2026</h1>
 </header>
+
 
 <div id="barreEtat" class="status-bar status-connecting">
 Vérification de la connexion serveur...
