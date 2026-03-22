@@ -1,1 +1,15 @@
-[] wow
+{
+  "disponibles": [
+    "LIC-VPIJLR-0001-A1B2",
+    "LIC-VPIJLR-0002-C3D4",
+    "LIC-VPIJLR-0003-E5F6",
+    "LIC-VPIJLR-0004-G7H8",
+    "LIC-VPIJLR-0005-I9J0",
+    "LIC-VPIJLR-0006-K1L2",
+    "LIC-VPIJLR-0007-M3N4",
+    "LIC-VPIJLR-0008-O5P6",
+    "LIC-VPIJLR-0009-Q7R8",
+    "LIC-VPIJLR-0010-S9T0"
+  ],
+  "utilisees": []
+}
