@@ -10,7 +10,7 @@ const path = require("path");
 
 /* ======================================================
 MODULE 02
-VERIFICATION STRIPE AVANT INIT
+VERIFICATION STRIPE
 ====================================================== */
 
 if (!process.env.STRIPE_SECRET_KEY) {
@@ -53,8 +53,9 @@ function genererCleLicence() {
   }
 
   return [
-    bloc(), bloc(), bloc(), bloc(),
-    bloc(), bloc(), bloc()
+    bloc(), bloc(), bloc(),
+    bloc(), bloc(), bloc(),
+    bloc()
   ].join("-");
 }
 
@@ -83,7 +84,7 @@ function enregistrerLicence(cle) {
 
 /* ======================================================
 MODULE 07
-ROUTES
+ROUTES BASE
 ====================================================== */
 
 app.get("/", (req, res) => {
@@ -101,6 +102,21 @@ app.get("/licences", (req, res) => {
 
 /* ======================================================
 MODULE 08
+TEST MANUEL
+====================================================== */
+
+app.get("/test-webhook", (req, res) => {
+
+  const licence = genererCleLicence();
+  enregistrerLicence(licence);
+
+  console.log("TEST LICENCE :", licence);
+
+  res.send("Licence générée : " + licence);
+});
+
+/* ======================================================
+MODULE 09
 STRIPE CHECKOUT
 ====================================================== */
 
@@ -135,11 +151,13 @@ app.post("/create-checkout-session", async (req, res) => {
 });
 
 /* ======================================================
-MODULE 09
+MODULE 10
 WEBHOOK STRIPE
 ====================================================== */
 
 app.post("/webhook", express.raw({ type: "application/json" }), (req, res) => {
+
+  console.log("WEBHOOK REÇU");
 
   let event;
 
@@ -154,7 +172,10 @@ app.post("/webhook", express.raw({ type: "application/json" }), (req, res) => {
     return res.status(400).send();
   }
 
-  if (event.type === "checkout.session.completed") {
+  if (
+    event.type === "checkout.session.completed" ||
+    event.type === "checkout.session.expired"
+  ) {
 
     const licence = genererCleLicence();
     enregistrerLicence(licence);
@@ -166,7 +187,7 @@ app.post("/webhook", express.raw({ type: "application/json" }), (req, res) => {
 });
 
 /* ======================================================
-MODULE 10
+MODULE 11
 DEMARRAGE
 ====================================================== */
 
