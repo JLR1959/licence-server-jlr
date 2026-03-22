@@ -207,4 +207,25 @@ function genererCleLicence() {
   ].join("-");
 }
 
+/* ======================================================
+MODULE 11
+ENREGISTRER LICENCE ACTIVE
+====================================================== */
 
+function enregistrerLicence(cle) {
+
+  let data;
+
+  try {
+    data = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+  } catch {
+    data = { actives: [] };
+  }
+
+  data.actives.push({
+    cle: cle,
+    date: new Date().toISOString()
+  });
+
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+}
