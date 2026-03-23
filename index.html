@@ -1,1 +1,249 @@
-https://vpijlr-logiciel-client-meg5.onrender.com/
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+<meta charset="UTF-8">
+<title>Licence Manager VPIJLR 2026</title>
+
+<link rel="manifest" href="manifest.json">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<style>
+*{box-sizing:border-box;}
+body{
+  font-family:Arial, sans-serif;
+  background:linear-gradient(180deg,#08101d,#0b1220);
+  margin:0;
+  color:#e5e7eb;
+}
+.container{
+  max-width:1100px;
+  margin:auto;
+  padding:30px;
+}
+header{
+  display:flex;
+  align-items:center;
+  gap:15px;
+  background:#111827;
+  padding:18px;
+  border-radius:14px;
+  margin-bottom:20px;
+  box-shadow:0 10px 25px rgba(0,0,0,0.4);
+}
+.logo{
+  width:60px;
+  height:60px;
+  border-radius:50%;
+}
+.status-bar{
+  padding:12px;
+  border-radius:10px;
+  margin-bottom:20px;
+  font-weight:bold;
+}
+.status-online{background:#065f46;color:#34d399;}
+.status-offline{background:#5b2323;color:#fecaca;}
+.status-connecting{background:#6b4300;color:#fde68a;}
+.dashboard{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:15px;
+  margin-bottom:20px;
+}
+.mini-card{
+  background:#111827;
+  padding:15px;
+  border-radius:12px;
+  box-shadow:0 6px 15px rgba(0,0,0,0.4);
+}
+.mini-card h4{
+  margin:0;
+  font-size:13px;
+  color:#93c5fd;
+}
+.mini-value{
+  font-size:20px;
+  font-weight:bold;
+  margin-top:5px;
+}
+.card{
+  background:#111827;
+  padding:20px;
+  border-radius:12px;
+  margin-bottom:20px;
+  box-shadow:0 6px 15px rgba(0,0,0,0.4);
+}
+.card h3{
+  margin-top:0;
+}
+label{
+  display:block;
+  margin-top:10px;
+}
+input,select{
+  width:100%;
+  padding:10px;
+  margin-top:5px;
+  border:none;
+  border-radius:6px;
+  background:#020617;
+  color:#e5e7eb;
+}
+.actions-row{
+  display:flex;
+  gap:10px;
+  margin-top:10px;
+  flex-wrap:wrap;
+}
+button{
+  padding:10px 14px;
+  border:none;
+  border-radius:8px;
+  background:#2563eb;
+  color:white;
+  cursor:pointer;
+}
+button:hover{
+  background:#1d4ed8;
+}
+table{
+  width:100%;
+  border-collapse:collapse;
+}
+th,td{
+  padding:10px;
+  border-bottom:1px solid #1f2937;
+}
+.log-box{
+  background:#020617;
+  padding:15px;
+  border-radius:10px;
+  min-height:200px;
+  max-height:300px;
+  overflow:auto;
+  font-family:monospace;
+}
+.log-ok{color:#22c55e;}
+.log-info{color:#38bdf8;}
+.log-error{color:#f87171;}
+.log-time{color:#6b7280;}
+</style>
+
+</head>
+
+<body>
+
+<div class="container">
+
+<header>
+  <img src="logo_jlr.png" class="logo" alt="Logo VPIJLR">
+  <h1>Licence Manager VPIJLR 2026</h1>
+</header>
+
+<div id="barreEtat" class="status-bar status-connecting">
+Connexion serveur...
+</div>
+
+<div class="dashboard">
+
+  <div class="mini-card">
+    <h4>État serveur</h4>
+    <div id="etatServeurTexte" class="mini-value">En attente</div>
+  </div>
+
+  <div class="mini-card">
+    <h4>Licences</h4>
+    <div id="compteurLicences" class="mini-value">0</div>
+  </div>
+
+  <div class="mini-card">
+    <h4>Dernière sync</h4>
+    <div id="derniereSync" class="mini-value">-</div>
+  </div>
+
+  <div class="mini-card">
+    <h4>Visiteurs</h4>
+    <div class="mini-value">Externe</div>
+  </div>
+
+</div>
+
+<!-- VISITEURS : bouton uniquement -->
+<div class="card">
+  <h3>Statistiques visiteurs</h3>
+  <button onclick="window.open('https://www.webador.com/v2/website/7100664/statistics')">
+    Voir statistiques Webador
+  </button>
+</div>
+
+<!-- CREATION -->
+<div class="card">
+  <h3>Créer licence</h3>
+
+  <label>Client</label>
+  <input id="client">
+
+  <label>Email</label>
+  <input id="emailClient">
+
+  <label>Type</label>
+  <select id="typeLicence">
+    <option value="mensuelle_1">Mensuelle</option>
+    <option value="annuelle_1">Annuelle</option>
+    <option value="achat_1">À vie</option>
+  </select>
+
+  <label>Date activation</label>
+  <input type="date" id="dateActivation">
+
+  <label>Date expiration</label>
+  <input type="date" id="dateExpiration">
+
+  <div class="actions-row">
+    <button onclick="genererLicence()">Créer</button>
+    <button onclick="envoyerEmail()">Envoyer email</button>
+  </div>
+
+  <input id="licenceGeneree" readonly placeholder="Clé générée">
+
+</div>
+
+<!-- FILTRE -->
+<div class="card">
+  <h3>Recherche</h3>
+  <input id="rechercheClient" onkeyup="filtrer()" placeholder="Filtrer...">
+  <button onclick="exportPDF()">Exporter PDF</button>
+</div>
+
+<!-- TABLE -->
+<div class="card">
+  <h3>Licences</h3>
+  <div class="table-wrap">
+    <table id="tableLicences">
+      <thead>
+        <tr>
+          <th>Client</th>
+          <th>Type</th>
+          <th>Expiration</th>
+          <th>Clé</th>
+        </tr>
+      </thead>
+      <tbody id="listeClients"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- LOGS -->
+<div class="card">
+  <h3>Activité</h3>
+  <div id="journalActivite" class="log-box"></div>
+</div>
+
+</div>
+
+<script src="licenceManager.js"></script>
+
+</body>
+</html>
