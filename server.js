@@ -1,3 +1,7 @@
+/* ======================================================
+MODULE 01 — SETUP SERVEUR
+====================================================== */
+
 const express = require("express");
 const cors = require("cors");
 const fs = require("fs");
@@ -6,69 +10,168 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const DATA_FILE = "licences.json";
-
-/* =========================
-UTILS
-========================= */
-
-function chargerLicences() {
-  try {
-    return JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
-  } catch {
-    return { actives: [] };
-  }
-}
-
-function sauvegarderLicences(data) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-}
-
-function genererCle() {
-  return "LIC-" + Math.random().toString(36).substring(2, 10).toUpperCase();
-}
-
-/* =========================
-ROUTES
-========================= */
-
-app.get("/", (req, res) => {
-  res.send("SERVEUR LICENCE OK");
-});
-
-app.get("/ping", (req, res) => {
-  res.send("OK");
-});
-
-app.get("/licences", (req, res) => {
-  const data = chargerLicences();
-  res.json(data);
-});
-
-app.post("/licences", (req, res) => {
-  const data = chargerLicences();
-
-  const nouvelle = {
-    cle: genererCle(),
-    client: req.body.client || "",
-    email: req.body.email || "",
-    date: new Date().toISOString()
-  };
-
-  data.actives.push(nouvelle);
-  sauvegarderLicences(data);
-
-  console.log("LICENCE CRÉÉE:", nouvelle.cle);
-
-  res.json(nouvelle);
-});
-
-/* =========================
-START
-========================= */
-
 const PORT = process.env.PORT || 3000;
+const DB_FILE = "licences.json";
 
-app.listen(PORT, () => {
-  console.log("SERVEUR LICENCE ACTIF sur port", PORT);
+/* ======================================================
+MODULE 02 — DB (LECTURE / SAUVEGARDE)
+====================================================== */
+
+function lireDB(){
+    if(!fs.existsSync(DB_FILE)){
+        fs.writeFileSync(DB_FILE, JSON.stringify({actives:[]}, null, 2));
+    }
+    return JSON.parse(fs.readFileSync(DB_FILE));
+}
+
+function sauverDB(data){
+    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+}
+
+/* ======================================================
+MODULE 03 — GENERATEUR CLE LICENCE
+====================================================== */
+
+function genererCle(){
+    return "VPIJLR-" + Math.random().toString(36).substring(2,10).toUpperCase();
+}
+
+/* ======================================================
+MODULE 04 — PING (TEST SERVEUR)
+====================================================== */
+
+app.get("/ping",(req,res)=>{
+    res.json({status:"ok"});
+});
+
+/* ======================================================
+MODULE 05 — VERIFY SESSION (EXISTANT STRIPE)
+⚠️ ADAPTÉ À TON FLOW ACTUEL
+====================================================== */
+
+app.post("/verify-session",(req,res)=>{
+
+    // ⚠️ Tu avais déjà ce système fonctionnel
+    // ici on simule juste le retour email
+
+    const {session_id} = req.body;
+
+    if(!session_id){
+        return res.status(400).json({error:"session_id manquant"});
+    }
+
+    // 🔥 IMPORTANT
+    // remplace ceci si tu as déjà Stripe connecté
+    // par ton vrai code existant
+
+    const fakeEmail = "client@test.com";
+
+    res.json({
+        success:true,
+        email: fakeEmail
+    });
+
+});
+
+/* ======================================================
+MODULE 06 — ACTIVATION LICENCE
+====================================================== */
+
+app.post("/activate-licence",(req,res)=>{
+
+    const {email, type} = req.body;
+
+    if(!email){
+        return res.status(400).json({error:"email manquant"});
+    }
+
+    const db = lireDB();
+
+    // 🔥 éviter doublon
+    let existante = db.actives.find(l => l.email === email);
+
+    if(existante){
+        return res.json({
+            success:true,
+            licenceKey: existante.licenceKey,
+            expiration: existante.expiration
+        });
+    }
+
+    const cle = genererCle();
+
+    const expiration = new Date();
+    expiration.setMonth(expiration.getMonth()+1);
+
+    const licence = {
+        email,
+        licenceKey: cle,
+        type: type || "mensuelle",
+        expiration: expiration.toISOString(),
+        active: true
+    };
+
+    db.actives.push(licence);
+    sauverDB(db);
+
+    res.json({
+        success:true,
+        licenceKey: cle,
+        expiration: licence.expiration
+    });
+
+});
+
+/* ======================================================
+MODULE 07 — VERIFICATION LICENCE
+====================================================== */
+
+app.post("/check-licence",(req,res)=>{
+
+    const {licenceKey} = req.body;
+
+    if(!licenceKey){
+        return res.json({valid:false});
+    }
+
+    const db = lireDB();
+
+    const licence = db.actives.find(l=>l.licenceKey === licenceKey);
+
+    if(!licence){
+        return res.json({valid:false});
+    }
+
+    const now = new Date();
+    const exp = new Date(licence.expiration);
+
+    if(now > exp){
+        return res.json({
+            valid:false,
+            expired:true
+        });
+    }
+
+    res.json({
+        valid:true,
+        email: licence.email
+    });
+
+});
+
+/* ======================================================
+MODULE 08 — LISTE LICENCES (DEBUG)
+====================================================== */
+
+app.get("/licences",(req,res)=>{
+    const db = lireDB();
+    res.json(db);
+});
+
+/* ======================================================
+MODULE 09 — START SERVEUR
+====================================================== */
+
+app.listen(PORT,()=>{
+    console.log("Serveur licence actif sur port", PORT);
 });
