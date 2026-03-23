@@ -29,15 +29,33 @@ function sauverDB(data){
 }
 
 /* ======================================================
-MODULE 03 — GENERATEUR CLE LICENCE
+MODULE 03 — GENERATEUR CLE LICENCE (42 CARACTÈRES)
+FORMAT : XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX
 ====================================================== */
 
+function genererBloc(){
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    let bloc = "";
+    for(let i=0;i<6;i++){
+        bloc += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return bloc;
+}
+
 function genererCle(){
-    return "VPIJLR-" + Math.random().toString(36).substring(2,10).toUpperCase();
+    return [
+        genererBloc(),
+        genererBloc(),
+        genererBloc(),
+        genererBloc(),
+        genererBloc(),
+        genererBloc(),
+        genererBloc()
+    ].join("-");
 }
 
 /* ======================================================
-MODULE 04 — PING (TEST SERVEUR)
+MODULE 04 — PING
 ====================================================== */
 
 app.get("/ping",(req,res)=>{
@@ -45,14 +63,11 @@ app.get("/ping",(req,res)=>{
 });
 
 /* ======================================================
-MODULE 05 — VERIFY SESSION (EXISTANT STRIPE)
-⚠️ ADAPTÉ À TON FLOW ACTUEL
+MODULE 05 — VERIFY SESSION (SIMULATION)
+⚠️ REMPLACE PLUS TARD PAR STRIPE RÉEL
 ====================================================== */
 
 app.post("/verify-session",(req,res)=>{
-
-    // ⚠️ Tu avais déjà ce système fonctionnel
-    // ici on simule juste le retour email
 
     const {session_id} = req.body;
 
@@ -60,10 +75,7 @@ app.post("/verify-session",(req,res)=>{
         return res.status(400).json({error:"session_id manquant"});
     }
 
-    // 🔥 IMPORTANT
-    // remplace ceci si tu as déjà Stripe connecté
-    // par ton vrai code existant
-
+    // TEMPORAIRE (remplacer par Stripe réel plus tard)
     const fakeEmail = "client@test.com";
 
     res.json({
@@ -87,7 +99,7 @@ app.post("/activate-licence",(req,res)=>{
 
     const db = lireDB();
 
-    // 🔥 éviter doublon
+    // éviter doublon licence
     let existante = db.actives.find(l => l.email === email);
 
     if(existante){
@@ -160,7 +172,7 @@ app.post("/check-licence",(req,res)=>{
 });
 
 /* ======================================================
-MODULE 08 — LISTE LICENCES (DEBUG)
+MODULE 08 — DEBUG LICENCES
 ====================================================== */
 
 app.get("/licences",(req,res)=>{
