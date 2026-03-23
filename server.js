@@ -1,35 +1,24 @@
 /* ======================================================
-MODULE 01 — SETUP SERVEUR
+MODULE 01 — SETUP
 ====================================================== */
 
 const express = require("express");
 const cors = require("cors");
-const fs = require("fs");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
-const DB_FILE = "licences.json";
 
 /* ======================================================
-MODULE 02 — DB
+MODULE 02 — STOCKAGE
 ====================================================== */
 
-function lireDB(){
-    if(!fs.existsSync(DB_FILE)){
-        fs.writeFileSync(DB_FILE, JSON.stringify({actives:[]}, null, 2));
-    }
-    return JSON.parse(fs.readFileSync(DB_FILE));
-}
-
-function sauverDB(data){
-    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
-}
+let licences = [];
 
 /* ======================================================
-MODULE 03 — GENERATEUR CLE (42 CARACTÈRES)
+MODULE 03 — GENERATEUR CLE
 ====================================================== */
 
 function genererBloc(){
@@ -54,7 +43,15 @@ function genererCle(){
 }
 
 /* ======================================================
-MODULE 04 — PING
+MODULE 04 — NORMALISATION CLE
+====================================================== */
+
+function normaliser(cle){
+    return cle.trim().toUpperCase();
+}
+
+/* ======================================================
+MODULE 05 — PING
 ====================================================== */
 
 app.get("/ping",(req,res)=>{
@@ -62,88 +59,63 @@ app.get("/ping",(req,res)=>{
 });
 
 /* ======================================================
-MODULE 05 — VERIFY SESSION (TEMPORAIRE)
-====================================================== */
-
-app.post("/verify-session",(req,res)=>{
-
-    const {session_id} = req.body;
-
-    if(!session_id){
-        return res.status(400).json({error:"session_id manquant"});
-    }
-
-    // ⚠️ TEMPORAIRE (Stripe réel plus tard)
-    res.json({
-        success:true,
-        email: "client@test.com"
-    });
-
-});
-
-/* ======================================================
-MODULE 06 — ACTIVATION LICENCE (SIMPLIFIÉE)
+MODULE 06 — ACTIVER LICENCE
 ====================================================== */
 
 app.post("/activate-licence",(req,res)=>{
-
-    const db = lireDB();
 
     const cle = genererCle();
 
     const expiration = new Date();
     expiration.setMonth(expiration.getMonth()+1);
 
-    const licence = {
-        licenceKey: cle,
-        expiration: expiration.toISOString(),
-        active: true
-    };
+    licences.push({
+        licenceKey: normaliser(cle),
+        expiration: expiration
+    });
 
-    db.actives.push(licence);
-    sauverDB(db);
+    console.log("LICENCE AJOUTÉE :", cle);
 
     res.json({
         success:true,
-        licenceKey: cle,
-        expiration: licence.expiration
+        licenceKey: cle
     });
 
 });
 
 /* ======================================================
-MODULE 07 — VERIFICATION LICENCE (FIABLE)
+MODULE 07 — CHECK LICENCE (CORRIGÉ)
 ====================================================== */
 
 app.post("/check-licence",(req,res)=>{
 
-    const {licenceKey} = req.body;
+    let {licenceKey} = req.body;
 
     if(!licenceKey){
         return res.json({valid:false});
     }
 
-    const db = lireDB();
+    licenceKey = normaliser(licenceKey);
 
-    const licence = db.actives.find(l=>l.licenceKey === licenceKey);
+    console.log("CHECK DEMANDE :", licenceKey);
+
+    const licence = licences.find(l => l.licenceKey === licenceKey);
 
     if(!licence){
+        console.log("❌ NON TROUVÉ");
         return res.json({valid:false});
     }
 
     const now = new Date();
-    const exp = new Date(licence.expiration);
 
-    if(now > exp){
-        return res.json({
-            valid:false,
-            expired:true
-        });
+    if(now > licence.expiration){
+        console.log("❌ EXPIRÉ");
+        return res.json({valid:false});
     }
 
-    res.json({
-        valid:true
-    });
+    console.log("✅ VALIDE");
+
+    res.json({valid:true});
 
 });
 
@@ -152,7 +124,7 @@ MODULE 08 — DEBUG
 ====================================================== */
 
 app.get("/licences",(req,res)=>{
-    res.json(lireDB());
+    res.json(licences);
 });
 
 /* ======================================================
@@ -160,5 +132,5 @@ MODULE 09 — START
 ====================================================== */
 
 app.listen(PORT,()=>{
-    console.log("Serveur licence actif sur port", PORT);
+    console.log("Serveur licence actif");
 });
