@@ -1,12 +1,11 @@
-
 {
   "name": "licence-server",
   "version": "1.0.0",
   "description": "Serveur licences VPIJLR",
-  "main": "serveurLicences.js",
+  "main": "server.js",
 
   "scripts": {
-    "start": "node serveurLicences.js"
+    "start": "node server.js"
   },
 
   "engines": {
