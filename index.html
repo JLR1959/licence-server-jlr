@@ -7,8 +7,25 @@
 
 <link rel="manifest" href="manifest.json">
 
+<!-- ======================================================
+MODULE 01 — CSP (OBLIGATOIRE)
+====================================================== -->
+<meta http-equiv="Content-Security-Policy" content="
+default-src 'self' https:;
+connect-src https://licence-server-jlr-0jex.onrender.com;
+img-src 'self' https: data:;
+script-src 'self' https://cdnjs.cloudflare.com 'unsafe-inline';
+style-src 'self' 'unsafe-inline';
+">
+
+<!-- ======================================================
+MODULE 02 — LIB
+====================================================== -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
+<!-- ======================================================
+MODULE 03 — STYLE
+====================================================== -->
 <style>
 *{box-sizing:border-box;}
 body{
@@ -170,7 +187,6 @@ Connexion serveur...
 
 </div>
 
-<!-- VISITEURS : bouton uniquement -->
 <div class="card">
   <h3>Statistiques visiteurs</h3>
   <button onclick="window.open('https://www.webador.com/v2/website/7100664/statistics')">
@@ -178,7 +194,6 @@ Connexion serveur...
   </button>
 </div>
 
-<!-- CREATION -->
 <div class="card">
   <h3>Créer licence</h3>
 
@@ -207,35 +222,29 @@ Connexion serveur...
   </div>
 
   <input id="licenceGeneree" readonly placeholder="Clé générée">
-
 </div>
 
-<!-- FILTRE -->
 <div class="card">
   <h3>Recherche</h3>
   <input id="rechercheClient" onkeyup="filtrer()" placeholder="Filtrer...">
   <button onclick="exportPDF()">Exporter PDF</button>
 </div>
 
-<!-- TABLE -->
 <div class="card">
   <h3>Licences</h3>
-  <div class="table-wrap">
-    <table id="tableLicences">
-      <thead>
-        <tr>
-          <th>Client</th>
-          <th>Type</th>
-          <th>Expiration</th>
-          <th>Clé</th>
-        </tr>
-      </thead>
-      <tbody id="listeClients"></tbody>
-    </table>
-  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Client</th>
+        <th>Type</th>
+        <th>Expiration</th>
+        <th>Clé</th>
+      </tr>
+    </thead>
+    <tbody id="listeClients"></tbody>
+  </table>
 </div>
 
-<!-- LOGS -->
 <div class="card">
   <h3>Activité</h3>
   <div id="journalActivite" class="log-box"></div>

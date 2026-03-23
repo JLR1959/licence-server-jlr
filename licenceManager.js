@@ -308,3 +308,48 @@ document.addEventListener("DOMContentLoaded", () => {
     chargerLicencesServeur();
   }, 4000);
 });
+
+/* ======================================================
+MODULE LIVE LOGS — CLIENT
+====================================================== */
+
+const journal = document.getElementById("journalActivite");
+
+function ajouterLog(log){
+
+    const ligne = document.createElement("div");
+
+    let couleur = "log-info";
+    if(log.type==="ok") couleur = "log-ok";
+    if(log.type==="error") couleur = "log-error";
+
+    ligne.innerHTML = `
+        <span class="log-time">[${log.time}]</span>
+        <span class="${couleur}">${log.message}</span>
+    `;
+
+    journal.appendChild(ligne);
+    journal.scrollTop = journal.scrollHeight;
+}
+
+function connecterLogs(){
+
+    const source = new EventSource("https://licence-server-jlr-0jex.onrender.com/logs");
+
+    source.onmessage = (event)=>{
+        const log = JSON.parse(event.data);
+        ajouterLog(log);
+    };
+
+    source.onerror = ()=>{
+        ajouterLog({
+            time:new Date().toLocaleTimeString(),
+            type:"error",
+            message:"Connexion LIVE perdue..."
+        });
+
+        setTimeout(connecterLogs,3000);
+    };
+}
+
+connecterLogs();
