@@ -2,29 +2,23 @@
 <html lang="fr">
 
 <head>
-
-<div class="card">
-    <h3>Réactivation de licence</h3>
-    <label for="newLicense">Nouveau numéro de licence</label>
-    <input type="text" id="newLicense" placeholder="Entrez votre nouveau numéro de licence" />
-    <button onclick="activateNewLicense()">Activer le nouveau code</button>
-    <p id="activationMessage" class="error"></p>
-</div>
-
-
 <meta charset="UTF-8">
-<title>Licence Manager VPIJLR</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Licence Manager VPIJLR 2026</title>
 
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#1f3a60">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
 <style>
 
+*{box-sizing:border-box;}
+
 body{
-font-family:Arial, sans-serif;
-background:#f4f6f9;
+font-family:Arial;
+background:linear-gradient(180deg,#08101d,#0b1220);
 margin:0;
-padding:0;
+color:#e5e7eb;
 }
 
 .container{
@@ -33,151 +27,145 @@ margin:auto;
 padding:30px;
 }
 
+/* HEADER */
+
 header{
-background:#1f3a60;
-color:white;
-padding:20px;
-border-radius:8px;
-margin-bottom:20px;
 display:flex;
 align-items:center;
 gap:15px;
+background:#111827;
+padding:18px;
+border-radius:14px;
+margin-bottom:20px;
+box-shadow:0 10px 25px rgba(0,0,0,0.4);
 }
 
 .logo{
 width:60px;
 height:60px;
+border-radius:50%;
 }
 
-.card{
-background:white;
-padding:20px;
-border-radius:8px;
-margin-bottom:20px;
-box-shadow:0 2px 8px rgba(0,0,0,0.08);
-}
-
-label{
-display:block;
-margin-top:10px;
-font-weight:bold;
-}
-
-input,select{
-width:100%;
-box-sizing:border-box;
-padding:10px;
-margin-top:5px;
-border:1px solid #ccc;
-border-radius:5px;
-}
-
-button{
-padding:10px 15px;
-background:#1f3a60;
-color:white;
-border:none;
-border-radius:5px;
-cursor:pointer;
-margin-right:8px;
-margin-top:10px;
-}
-
-button:hover{
-background:#2b4d7d;
-}
-
-table{
-width:100%;
-border-collapse:collapse;
-margin-top:15px;
-background:white;
-}
-
-th,td{
-padding:10px;
-border-bottom:1px solid #ddd;
-text-align:left;
-vertical-align:top;
-}
-
-th{
-background:#eef2f7;
-}
+/* STATUS */
 
 .status-bar{
-padding:14px 18px;
-border-radius:8px;
-color:white;
-font-weight:bold;
+padding:12px;
+border-radius:10px;
 margin-bottom:20px;
+font-weight:bold;
 }
 
-.status-offline{
-background:#b42318;
-}
+.status-online{background:#065f46;color:#34d399;}
+.status-offline{background:#5b2323;color:#fecaca;}
+.status-connecting{background:#6b4300;color:#fde68a;}
 
-.status-connecting{
-background:#b54708;
-}
-
-.status-online{
-background:#027a48;
-}
+/* DASHBOARD */
 
 .dashboard{
 display:grid;
-grid-template-columns:repeat(3,1fr);
+grid-template-columns:repeat(4,1fr);
 gap:15px;
 margin-bottom:20px;
 }
 
 .mini-card{
-background:white;
-border-radius:8px;
+background:#111827;
 padding:15px;
-box-shadow:0 2px 8px rgba(0,0,0,0.08);
+border-radius:12px;
+box-shadow:0 6px 15px rgba(0,0,0,0.4);
 }
 
 .mini-card h4{
-margin:0 0 8px 0;
-color:#1f3a60;
+margin:0;
+font-size:13px;
+color:#93c5fd;
 }
 
 .mini-value{
-font-size:22px;
+font-size:20px;
 font-weight:bold;
+margin-top:5px;
 }
 
-.log-box{
-background:#0f172a;
-color:#e2e8f0;
-border-radius:8px;
-padding:15px;
-min-height:180px;
-max-height:260px;
-overflow-y:auto;
-font-family:monospace;
-font-size:13px;
-white-space:pre-wrap;
+/* CARD */
+
+.card{
+background:#111827;
+padding:20px;
+border-radius:12px;
+margin-bottom:20px;
+box-shadow:0 6px 15px rgba(0,0,0,0.4);
+}
+
+.card h3{
+margin-top:0;
+}
+
+/* FORM */
+
+label{
+display:block;
+margin-top:10px;
+}
+
+input,select{
+width:100%;
+padding:10px;
+margin-top:5px;
+border:none;
+border-radius:6px;
+background:#020617;
+color:#e5e7eb;
 }
 
 .actions-row{
+display:flex;
+gap:10px;
 margin-top:10px;
-margin-bottom:5px;
+flex-wrap:wrap;
 }
 
-.small-note{
-color:#475467;
-font-size:13px;
-margin-top:10px;
+button{
+padding:10px 14px;
+border:none;
+border-radius:8px;
+background:#2563eb;
+color:white;
+cursor:pointer;
 }
 
-@media(max-width:900px){
-.dashboard{
-grid-template-columns:1fr;
+button:hover{
+background:#1d4ed8;
 }
+
+/* TABLE */
+
+table{
+width:100%;
+border-collapse:collapse;
 }
+
+th,td{
+padding:10px;
+border-bottom:1px solid #1f2937;
+}
+
+/* LOG */
+
+.log-box{
+background:#020617;
+padding:15px;
+border-radius:10px;
+min-height:200px;
+max-height:300px;
+overflow:auto;
+font-family:monospace;
+}
+
+.log-ok{color:#22c55e;}
+.log-info{color:#38bdf8;}
+.log-error{color:#f87171;}
+.log-time{color:#6b7280;}
 
 </style>
 
@@ -189,55 +177,66 @@ grid-template-columns:1fr;
 
 <header>
 <img src="logo_jlr.png" class="logo">
-<h1>Licence Manager – VPIJLR 2026</h1>
+<h1>Licence Manager VPIJLR 2026</h1>
 </header>
 
-
 <div id="barreEtat" class="status-bar status-connecting">
-Vérification de la connexion serveur...
+Connexion serveur...
 </div>
 
 <div class="dashboard">
 
 <div class="mini-card">
 <h4>État serveur</h4>
-<div id="etatServeurTexte" class="mini-value">En attente...</div>
+<div id="etatServeurTexte" class="mini-value">En attente</div>
 </div>
 
 <div class="mini-card">
-<h4>Nombre de licences</h4>
+<h4>Licences</h4>
 <div id="compteurLicences" class="mini-value">0</div>
 </div>
 
 <div class="mini-card">
-<h4>Dernière synchronisation</h4>
-<div id="derniereSync" class="mini-value" style="font-size:16px;">Aucune</div>
+<h4>Dernière sync</h4>
+<div id="derniereSync" class="mini-value">-</div>
+</div>
+
+<div class="mini-card">
+<h4>Visiteurs</h4>
+<div class="mini-value">Webador</div>
 </div>
 
 </div>
+
+<!-- VISITEURS -->
 
 <div class="card">
 
-<h3>Créer une licence</h3>
+<h3>Statistiques visiteurs</h3>
 
-<label>Logiciel</label>
-<input id="logiciel" value="VPIJLR 2026" readonly>
+<button onclick="window.open('https://www.webador.com/v2/website/7100664/statistics')">
+Voir statistiques Webador
+</button>
+
+</div>
+
+<!-- CREATION -->
+
+<div class="card">
+
+<h3>Créer licence</h3>
 
 <label>Client</label>
 <input id="client">
 
-<label>Email client</label>
+<label>Email</label>
 <input id="emailClient">
 
-<label>Type licence</label>
-
+<label>Type</label>
 <select id="typeLicence">
-<option value="mensuelle_1">Mensuelle (1 poste)</option>
-<option value="mensuelle_5">Mensuelle (5 postes)</option>
-<option value="annuelle_1">Annuelle (1 poste)</option>
-<option value="annuelle_5">Annuelle (5 postes)</option>
-<option value="achat_1">Achat à vie (1 poste)</option>
-<option value="achat_5">Achat à vie (5 postes)</option>
+<option value="mensuelle_1">Mensuelle</option>
+<option value="annuelle_1">Annuelle</option>
+<option value="achat_1">À vie</option>
 </select>
 
 <label>Date activation</label>
@@ -246,42 +245,41 @@ Vérification de la connexion serveur...
 <label>Date expiration</label>
 <input type="date" id="dateExpiration">
 
-<label>Code activation</label>
-<input id="licenceGeneree" readonly style="font-weight:bold">
-
 <div class="actions-row">
-<button onclick="genererLicence()">Créer licence</button>
-<button onclick="chargerLicencesServeur()">Actualiser le serveur</button>
+<button onclick="genererLicence()">Créer</button>
+<button onclick="envoyerEmail()">Envoyer email</button>
 </div>
 
-<div class="small-note">
-Bande verte = communication serveur active.<br>
-Bande rouge = problème de connexion ou serveur arrêté.
-</div>
+<input id="licenceGeneree" readonly>
 
 </div>
+
+<!-- FILTRE -->
 
 <div class="card">
 
-<h3>Licences du serveur</h3>
+<h3>Recherche</h3>
 
-<input id="rechercheClient" placeholder="Rechercher client" onkeyup="rechercherClient()">
+<input id="rechercheClient" onkeyup="filtrer()" placeholder="Filtrer...">
 
-<table>
+<button onclick="exportPDF()">Exporter PDF</button>
 
+</div>
+
+<!-- TABLE -->
+
+<div class="card">
+
+<h3>Licences</h3>
+
+<table id="tableLicences">
 <thead>
-
 <tr>
-<th>Logiciel</th>
 <th>Client</th>
 <th>Type</th>
-<th>Machines</th>
 <th>Expiration</th>
-<th>Statut</th>
 <th>Clé</th>
-<th>Actions</th>
 </tr>
-
 </thead>
 
 <tbody id="listeClients"></tbody>
@@ -290,9 +288,11 @@ Bande rouge = problème de connexion ou serveur arrêté.
 
 </div>
 
+<!-- LOGS -->
+
 <div class="card">
 
-<h3>Activité en direct</h3>
+<h3>Activité</h3>
 
 <div id="journalActivite" class="log-box"></div>
 
@@ -301,12 +301,6 @@ Bande rouge = problème de connexion ou serveur arrêté.
 </div>
 
 <script src="licenceManager.js"></script>
-
-<script>
-if("serviceWorker" in navigator){
-navigator.serviceWorker.register("service-worker.js")
-}
-</script>
 
 </body>
 </html>
