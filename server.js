@@ -96,6 +96,10 @@ app.get("/logs", (req, res)=>{
 MODULE 07 — ROUTES API
 ====================================================== */
 
+app.get("/", (req,res)=>{
+    res.send("SERVEUR LICENCE ACTIF");
+});
+
 app.get("/ping",(req,res)=>{
     envoyerLog("ok","Ping serveur");
     res.send("OK");
