@@ -4,6 +4,7 @@ MODULE 01 — SETUP
 
 const express = require("express");
 const cors = require("cors");
+const crypto = require("crypto");
 
 const app = express();
 app.use(cors());
@@ -12,66 +13,51 @@ app.use(express.json());
 const PORT = process.env.PORT || 3000;
 
 /* ======================================================
-MODULE 02 — STOCKAGE
+MODULE 02 — CONFIG SECRET
+====================================================== */
+
+const SECRET = "JLR_SECRET_ULTRA_SECURE_2026";
+
+/* ======================================================
+MODULE 03 — STOCKAGE
 ====================================================== */
 
 let licences = [];
 let clientsSSE = [];
 
 /* ======================================================
-MODULE 03 — GENERATEUR CLE
+MODULE 04 — SIGNATURE
 ====================================================== */
 
-function genererBloc(){
-    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    let bloc = "";
-    for(let i=0;i<6;i++){
-        bloc += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return bloc;
-}
-
-function genererCle(){
-    return [
-        genererBloc(),
-        genererBloc(),
-        genererBloc(),
-        genererBloc(),
-        genererBloc(),
-        genererBloc(),
-        genererBloc()
-    ].join("-");
+function signer(data){
+    return crypto
+        .createHmac("sha256", SECRET)
+        .update(data)
+        .digest("hex");
 }
 
 /* ======================================================
-MODULE 04 — NORMALISATION CLE
+MODULE 05 — LOG
 ====================================================== */
 
-function normaliser(cle){
-    return cle.trim().toUpperCase();
-}
-
-/* ======================================================
-MODULE 05 — LOG TEMPS REEL
-====================================================== */
-
-function envoyerLog(type, message){
+function envoyerLog(type, message, data = {}){
 
     const log = {
         time: new Date().toLocaleTimeString(),
         type,
-        message
+        message,
+        ...data
     };
 
     clientsSSE.forEach(client=>{
         client.write(`data: ${JSON.stringify(log)}\n\n`);
     });
 
-    console.log(`[${type}] ${message}`);
+    console.log(log);
 }
 
 /* ======================================================
-MODULE 06 — SSE (LIVE STREAM)
+MODULE 06 — SSE
 ====================================================== */
 
 app.get("/logs", (req, res)=>{
@@ -88,45 +74,94 @@ app.get("/logs", (req, res)=>{
 
     req.on("close", ()=>{
         clientsSSE = clientsSSE.filter(c=>c!==res);
-        envoyerLog("info","Client déconnecté LIVE");
     });
 });
 
 /* ======================================================
-MODULE 07 — ROUTES API
+MODULE 07 — CREATION LICENCE
 ====================================================== */
 
-app.get("/", (req,res)=>{
-    res.send("SERVEUR LICENCE ACTIF");
-});
-
-app.get("/ping",(req,res)=>{
-    envoyerLog("ok","Ping serveur");
-    res.send("OK");
-});
-
 app.post("/licence",(req,res)=>{
-    const cle = genererCle();
+
+    const cle = crypto.randomBytes(16).toString("hex");
+
+    const signature = signer(cle);
 
     licences.push({
         cle,
+        signature,
+        deviceId: null,
+        active: true,
         ...req.body
     });
 
-    envoyerLog("ok","Licence créée");
+    envoyerLog("ok","Licence créée",{cle});
 
-    res.json({cle});
-});
-
-app.get("/licences",(req,res)=>{
-    envoyerLog("info","Lecture licences");
-    res.json(licences);
+    res.json({cle, signature});
 });
 
 /* ======================================================
-MODULE 08 — START SERVER
+MODULE 08 — VALIDATION LICENCE
+====================================================== */
+
+app.post("/verify",(req,res)=>{
+
+    const {cle, signature, deviceId} = req.body;
+
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+
+    const licence = licences.find(l=>l.cle === cle);
+
+    if(!licence){
+        envoyerLog("error","Licence inconnue",{ip});
+        return res.json({valid:false});
+    }
+
+    const validSignature = signer(cle);
+
+    if(validSignature !== signature){
+        envoyerLog("error","Signature invalide",{ip});
+        return res.json({valid:false});
+    }
+
+    // Liaison appareil
+    if(!licence.deviceId){
+        licence.deviceId = deviceId;
+        envoyerLog("info","Licence liée appareil",{deviceId});
+    }
+
+    // Vérifie appareil
+    if(licence.deviceId !== deviceId){
+        envoyerLog("error","Licence utilisée sur autre machine",{ip});
+        return res.json({valid:false});
+    }
+
+    if(!licence.active){
+        envoyerLog("error","Licence désactivée",{ip});
+        return res.json({valid:false});
+    }
+
+    envoyerLog("ok","Licence valide",{ip});
+
+    res.json({valid:true});
+});
+
+/* ======================================================
+MODULE 09 — ROUTES
+====================================================== */
+
+app.get("/",(req,res)=>{
+    res.send("SERVEUR SECURE OK");
+});
+
+app.get("/ping",(req,res)=>{
+    res.send("OK");
+});
+
+/* ======================================================
+MODULE 10 — START
 ====================================================== */
 
 app.listen(PORT, ()=>{
-    console.log("Serveur démarré sur port", PORT);
+    console.log("Serveur sécurisé lancé");
 });
