@@ -14,7 +14,7 @@ const PORT = process.env.PORT || 3000;
 const DB_FILE = "licences.json";
 
 /* ======================================================
-MODULE 02 — DB (LECTURE / SAUVEGARDE)
+MODULE 02 — DB
 ====================================================== */
 
 function lireDB(){
@@ -29,8 +29,7 @@ function sauverDB(data){
 }
 
 /* ======================================================
-MODULE 03 — GENERATEUR CLE LICENCE (42 CARACTÈRES)
-FORMAT : XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX
+MODULE 03 — GENERATEUR CLE (42 CARACTÈRES)
 ====================================================== */
 
 function genererBloc(){
@@ -63,8 +62,7 @@ app.get("/ping",(req,res)=>{
 });
 
 /* ======================================================
-MODULE 05 — VERIFY SESSION (SIMULATION)
-⚠️ REMPLACE PLUS TARD PAR STRIPE RÉEL
+MODULE 05 — VERIFY SESSION (TEMPORAIRE)
 ====================================================== */
 
 app.post("/verify-session",(req,res)=>{
@@ -75,40 +73,21 @@ app.post("/verify-session",(req,res)=>{
         return res.status(400).json({error:"session_id manquant"});
     }
 
-    // TEMPORAIRE (remplacer par Stripe réel plus tard)
-    const fakeEmail = "client@test.com";
-
+    // ⚠️ TEMPORAIRE (Stripe réel plus tard)
     res.json({
         success:true,
-        email: fakeEmail
+        email: "client@test.com"
     });
 
 });
 
 /* ======================================================
-MODULE 06 — ACTIVATION LICENCE
+MODULE 06 — ACTIVATION LICENCE (SIMPLIFIÉE)
 ====================================================== */
 
 app.post("/activate-licence",(req,res)=>{
 
-    const {email, type} = req.body;
-
-    if(!email){
-        return res.status(400).json({error:"email manquant"});
-    }
-
     const db = lireDB();
-
-    // éviter doublon licence
-    let existante = db.actives.find(l => l.email === email);
-
-    if(existante){
-        return res.json({
-            success:true,
-            licenceKey: existante.licenceKey,
-            expiration: existante.expiration
-        });
-    }
 
     const cle = genererCle();
 
@@ -116,9 +95,7 @@ app.post("/activate-licence",(req,res)=>{
     expiration.setMonth(expiration.getMonth()+1);
 
     const licence = {
-        email,
         licenceKey: cle,
-        type: type || "mensuelle",
         expiration: expiration.toISOString(),
         active: true
     };
@@ -135,7 +112,7 @@ app.post("/activate-licence",(req,res)=>{
 });
 
 /* ======================================================
-MODULE 07 — VERIFICATION LICENCE
+MODULE 07 — VERIFICATION LICENCE (FIABLE)
 ====================================================== */
 
 app.post("/check-licence",(req,res)=>{
@@ -165,23 +142,21 @@ app.post("/check-licence",(req,res)=>{
     }
 
     res.json({
-        valid:true,
-        email: licence.email
+        valid:true
     });
 
 });
 
 /* ======================================================
-MODULE 08 — DEBUG LICENCES
+MODULE 08 — DEBUG
 ====================================================== */
 
 app.get("/licences",(req,res)=>{
-    const db = lireDB();
-    res.json(db);
+    res.json(lireDB());
 });
 
 /* ======================================================
-MODULE 09 — START SERVEUR
+MODULE 09 — START
 ====================================================== */
 
 app.listen(PORT,()=>{
