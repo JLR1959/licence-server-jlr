@@ -118,7 +118,7 @@ async function chargerLicencesServeur(){
     }
 
     const data = await response.json();
-    const actives = Array.isArray(data.actives) ? data.actives : [];
+    const actives = Array.isArray(data) ? data : [];
 
     const tbody = document.getElementById("listeClients");
     tbody.innerHTML = "";
@@ -170,6 +170,7 @@ async function genererLicence(){
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
+        cle: genererCleTemp(),
         client,
         email,
         type,
@@ -184,7 +185,7 @@ async function genererLicence(){
 
     const data = await response.json();
 
-    document.getElementById("licenceGeneree").value = data.cle || "";
+    document.getElementById("licenceGeneree").value = data.licence?.cle || "";
 
     logUI("ok", "Licence créée");
 
@@ -193,6 +194,11 @@ async function genererLicence(){
   }catch(error){
     logUI("error", "Erreur création licence");
   }
+}
+
+/* Petite fonction temporaire pour générer une clé si le serveur n'en génère pas */
+function genererCleTemp(){
+  return "LIC-" + Math.random().toString(36).substring(2,10).toUpperCase();
 }
 
 /* ======================================================
