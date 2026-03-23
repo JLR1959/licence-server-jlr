@@ -16,6 +16,7 @@ MODULE 02 — STOCKAGE
 ====================================================== */
 
 let licences = [];
+let clientsSSE = [];
 
 /* ======================================================
 MODULE 03 — GENERATEUR CLE
@@ -51,86 +52,77 @@ function normaliser(cle){
 }
 
 /* ======================================================
-MODULE 05 — PING
+MODULE 05 — LOG TEMPS REEL
+====================================================== */
+
+function envoyerLog(type, message){
+
+    const log = {
+        time: new Date().toLocaleTimeString(),
+        type,
+        message
+    };
+
+    clientsSSE.forEach(client=>{
+        client.write(`data: ${JSON.stringify(log)}\n\n`);
+    });
+
+    console.log(`[${type}] ${message}`);
+}
+
+/* ======================================================
+MODULE 06 — SSE (LIVE STREAM)
+====================================================== */
+
+app.get("/logs", (req, res)=>{
+
+    res.setHeader("Content-Type","text/event-stream");
+    res.setHeader("Cache-Control","no-cache");
+    res.setHeader("Connection","keep-alive");
+
+    res.flushHeaders();
+
+    clientsSSE.push(res);
+
+    envoyerLog("info","Client connecté LIVE");
+
+    req.on("close", ()=>{
+        clientsSSE = clientsSSE.filter(c=>c!==res);
+        envoyerLog("info","Client déconnecté LIVE");
+    });
+});
+
+/* ======================================================
+MODULE 07 — ROUTES API
 ====================================================== */
 
 app.get("/ping",(req,res)=>{
-    res.json({status:"ok"});
+    envoyerLog("ok","Ping serveur");
+    res.send("OK");
 });
 
-/* ======================================================
-MODULE 06 — ACTIVER LICENCE
-====================================================== */
-
-app.post("/activate-licence",(req,res)=>{
-
+app.post("/licence",(req,res)=>{
     const cle = genererCle();
 
-    const expiration = new Date();
-    expiration.setMonth(expiration.getMonth()+1);
-
     licences.push({
-        licenceKey: normaliser(cle),
-        expiration: expiration
+        cle,
+        ...req.body
     });
 
-    console.log("LICENCE AJOUTÉE :", cle);
+    envoyerLog("ok","Licence créée");
 
-    res.json({
-        success:true,
-        licenceKey: cle
-    });
-
+    res.json({cle});
 });
-
-/* ======================================================
-MODULE 07 — CHECK LICENCE (CORRIGÉ)
-====================================================== */
-
-app.post("/check-licence",(req,res)=>{
-
-    let {licenceKey} = req.body;
-
-    if(!licenceKey){
-        return res.json({valid:false});
-    }
-
-    licenceKey = normaliser(licenceKey);
-
-    console.log("CHECK DEMANDE :", licenceKey);
-
-    const licence = licences.find(l => l.licenceKey === licenceKey);
-
-    if(!licence){
-        console.log("❌ NON TROUVÉ");
-        return res.json({valid:false});
-    }
-
-    const now = new Date();
-
-    if(now > licence.expiration){
-        console.log("❌ EXPIRÉ");
-        return res.json({valid:false});
-    }
-
-    console.log("✅ VALIDE");
-
-    res.json({valid:true});
-
-});
-
-/* ======================================================
-MODULE 08 — DEBUG
-====================================================== */
 
 app.get("/licences",(req,res)=>{
+    envoyerLog("info","Lecture licences");
     res.json(licences);
 });
 
 /* ======================================================
-MODULE 09 — START
+MODULE 08 — START SERVER
 ====================================================== */
 
-app.listen(PORT,()=>{
-    console.log("Serveur licence actif");
+app.listen(PORT, ()=>{
+    console.log("Serveur démarré sur port", PORT);
 });
