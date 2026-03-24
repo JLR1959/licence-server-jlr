@@ -24,10 +24,8 @@ function logUI(type, message){
   line.className = "log-line " + color;
   line.innerHTML = `<span class="log-time">[${time}]</span> ${message}`;
 
-  if(box){
-    box.appendChild(line);
-    box.scrollTop = box.scrollHeight;
-  }
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
 }
 
 /* ======================================================
@@ -120,7 +118,7 @@ async function chargerLicencesServeur(){
     }
 
     const data = await response.json();
-    const actives = Array.isArray(data) ? data : [];
+    const actives = Array.isArray(data.actives) ? data.actives : [];
 
     const tbody = document.getElementById("listeClients");
     tbody.innerHTML = "";
@@ -172,7 +170,6 @@ async function genererLicence(){
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        cle: genererCleTemp(),
         client,
         email,
         type,
@@ -187,7 +184,7 @@ async function genererLicence(){
 
     const data = await response.json();
 
-    document.getElementById("licenceGeneree").value = data.licence?.cle || "";
+    document.getElementById("licenceGeneree").value = data.cle || "";
 
     logUI("ok", "Licence créée");
 
@@ -200,15 +197,6 @@ async function genererLicence(){
 
 /* ======================================================
 MODULE 07
-GÉNÉRATION CLÉ
-====================================================== */
-
-function genererCleTemp(){
-  return "LIC-" + Math.random().toString(36).substring(2,10).toUpperCase();
-}
-
-/* ======================================================
-MODULE 08
 ENVOI EMAIL
 ====================================================== */
 
@@ -251,14 +239,14 @@ VPIJLR 2026`
 }
 
 /* ======================================================
-MODULE 09
+MODULE 08
 FILTRE
 ====================================================== */
 
 function filtrer(){
 
   const valeur = document.getElementById("rechercheClient").value.toLowerCase();
-  const lignes = document.querySelectorAll("#listeClients tr");
+  const lignes = document.querySelectorAll("#tableLicences tbody tr");
 
   lignes.forEach((ligne) => {
     ligne.style.display = ligne.innerText.toLowerCase().includes(valeur) ? "" : "none";
@@ -266,7 +254,7 @@ function filtrer(){
 }
 
 /* ======================================================
-MODULE 10
+MODULE 09
 EXPORT PDF
 ====================================================== */
 
@@ -277,7 +265,7 @@ function exportPDF(){
 
   let y = 10;
 
-  document.querySelectorAll("#listeClients tr").forEach((ligne) => {
+  document.querySelectorAll("#tableLicences tbody tr").forEach((ligne) => {
 
     if(ligne.style.display === "none"){
       return;
@@ -293,27 +281,7 @@ function exportPDF(){
 }
 
 /* ======================================================
-MODULE 11
-LIVE LOGS (SSE)
-====================================================== */
-
-function connecterLogs(){
-
-  const source = new EventSource(SERVEUR_URL + "/logs");
-
-  source.onmessage = (event)=>{
-    const log = JSON.parse(event.data);
-    logUI(log.type || "info", log.message || "...");
-  };
-
-  source.onerror = ()=>{
-    logUI("error","Connexion LIVE perdue...");
-    setTimeout(connecterLogs,3000);
-  };
-}
-
-/* ======================================================
-MODULE 12
+MODULE 10
 INITIALISATION
 ====================================================== */
 
@@ -328,11 +296,9 @@ document.addEventListener("DOMContentLoaded", () => {
   setDates();
   ping();
   chargerLicencesServeur();
-  connecterLogs();
 
   setInterval(() => {
     ping();
     chargerLicencesServeur();
   }, 4000);
-
 });
