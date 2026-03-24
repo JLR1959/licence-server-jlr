@@ -5,6 +5,8 @@ MODULE 01 — SETUP
 const express = require("express");
 const cors = require("cors");
 const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
 
 const app = express();
 app.use(cors());
@@ -13,10 +15,13 @@ app.use(express.json());
 const PORT = process.env.PORT || 3000;
 
 /* ======================================================
-MODULE 02 — CONFIG SECRET
+MODULE 02 — CONFIG
 ====================================================== */
 
 const SECRET = "JLR_SECRET_ULTRA_SECURE_2026";
+
+const DATA_FILE = path.join(__dirname, "licences.json");
+const BACKUP_FILE = path.join(__dirname, "licences.backup.json");
 
 /* ======================================================
 MODULE 03 — STOCKAGE
@@ -26,7 +31,87 @@ let licences = [];
 let clientsSSE = [];
 
 /* ======================================================
-MODULE 04 — SIGNATURE
+MODULE 04 — GENERATION CLE 42
+====================================================== */
+
+function genererCleLicence(){
+
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    const blocs = [];
+
+    for(let b = 0; b < 7; b++){
+
+        let bloc = "";
+
+        for(let i = 0; i < 6; i++){
+            bloc += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+
+        blocs.push(bloc);
+    }
+
+    return blocs.join("-");
+}
+
+/* ======================================================
+MODULE 05 — CHARGEMENT SECURISE
+====================================================== */
+
+function chargerFichier(){
+
+    try{
+
+        if(fs.existsSync(DATA_FILE)){
+            licences = JSON.parse(fs.readFileSync(DATA_FILE,"utf-8"));
+            console.log("DATA LOAD:", licences.length);
+            return;
+        }
+
+        if(fs.existsSync(BACKUP_FILE)){
+            licences = JSON.parse(fs.readFileSync(BACKUP_FILE,"utf-8"));
+            console.log("BACKUP LOAD:", licences.length);
+            return;
+        }
+
+        licences = [];
+
+    }catch(e){
+
+        console.error("LOAD FAIL");
+
+        try{
+            licences = JSON.parse(fs.readFileSync(BACKUP_FILE,"utf-8"));
+        }catch{
+            licences = [];
+        }
+    }
+}
+
+/* ======================================================
+MODULE 06 — SAUVEGARDE ATOMIQUE
+====================================================== */
+
+function sauvegarderFichier(){
+
+    try{
+
+        const temp = DATA_FILE + ".tmp";
+
+        fs.writeFileSync(temp, JSON.stringify(licences,null,2));
+
+        if(fs.existsSync(DATA_FILE)){
+            fs.copyFileSync(DATA_FILE, BACKUP_FILE);
+        }
+
+        fs.renameSync(temp, DATA_FILE);
+
+    }catch(e){
+        console.error("SAVE ERROR");
+    }
+}
+
+/* ======================================================
+MODULE 07 — SIGNATURE
 ====================================================== */
 
 function signer(data){
@@ -37,7 +122,7 @@ function signer(data){
 }
 
 /* ======================================================
-MODULE 05 — LOG
+MODULE 08 — LOG
 ====================================================== */
 
 function envoyerLog(type, message, data = {}){
@@ -49,18 +134,18 @@ function envoyerLog(type, message, data = {}){
         ...data
     };
 
-    clientsSSE.forEach(client=>{
-        client.write(`data: ${JSON.stringify(log)}\n\n`);
+    clientsSSE.forEach(c=>{
+        c.write(`data: ${JSON.stringify(log)}\n\n`);
     });
 
     console.log(log);
 }
 
 /* ======================================================
-MODULE 06 — SSE
+MODULE 09 — SSE
 ====================================================== */
 
-app.get("/logs", (req, res)=>{
+app.get("/logs",(req,res)=>{
 
     res.setHeader("Content-Type","text/event-stream");
     res.setHeader("Cache-Control","no-cache");
@@ -70,7 +155,7 @@ app.get("/logs", (req, res)=>{
 
     clientsSSE.push(res);
 
-    envoyerLog("info","Client connecté LIVE");
+    envoyerLog("info","LIVE CONNECT");
 
     req.on("close", ()=>{
         clientsSSE = clientsSSE.filter(c=>c!==res);
@@ -78,80 +163,142 @@ app.get("/logs", (req, res)=>{
 });
 
 /* ======================================================
-MODULE 07 — CREATION LICENCE
+MODULE 10 — CREATION LICENCE
 ====================================================== */
 
-app.post("/licence",(req,res)=>{
+app.post("/licences",(req,res)=>{
 
-    const cle = crypto.randomBytes(16).toString("hex");
+    try{
 
-    const signature = signer(cle);
+        const cle = genererCleLicence();
+        const signature = signer(cle);
 
-    licences.push({
-        cle,
-        signature,
-        deviceId: null,
-        active: true,
-        ...req.body
-    });
+        const licence = {
+            cle,
+            signature,
+            deviceId: null,
+            active: true,
+            client: req.body.client || "",
+            email: req.body.email || "",
+            type: req.body.type || "",
+            dateActivation: req.body.dateActivation || "",
+            dateExpiration: req.body.dateExpiration || "",
+            createdAt: new Date().toISOString()
+        };
 
-    envoyerLog("ok","Licence créée",{cle});
+        licences.push(licence);
 
-    res.json({cle, signature});
+        sauvegarderFichier();
+
+        envoyerLog("ok","LICENCE CREATED",{cle});
+
+        res.json({licence});
+
+    }catch(e){
+        envoyerLog("error","CREATE FAIL");
+        res.status(500).json({error:true});
+    }
 });
 
 /* ======================================================
-MODULE 08 — VALIDATION LICENCE
+MODULE 11 — LISTE
+====================================================== */
+
+app.get("/licences",(req,res)=>{
+    res.json(licences);
+});
+
+/* ======================================================
+MODULE 12 — VALIDATION
 ====================================================== */
 
 app.post("/verify",(req,res)=>{
 
-    const {cle, signature, deviceId} = req.body;
+    try{
 
-    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+        const {cle, signature, deviceId} = req.body;
+
+        const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+
+        const licence = licences.find(l=>l.cle === cle);
+
+        if(!licence){
+            envoyerLog("error","UNKNOWN",{ip});
+            return res.json({valid:false});
+        }
+
+        if(signer(cle) !== signature){
+            envoyerLog("error","BAD SIGN",{ip});
+            return res.json({valid:false});
+        }
+
+        if(!licence.deviceId){
+            licence.deviceId = deviceId;
+            sauvegarderFichier();
+            envoyerLog("info","DEVICE LINK",{deviceId});
+        }
+
+        if(licence.deviceId !== deviceId){
+            envoyerLog("error","DEVICE MISMATCH",{ip});
+            return res.json({valid:false});
+        }
+
+        if(!licence.active){
+            envoyerLog("error","DISABLED",{ip});
+            return res.json({valid:false});
+        }
+
+        envoyerLog("ok","VALID",{ip});
+
+        res.json({valid:true});
+
+    }catch(e){
+        envoyerLog("error","VERIFY FAIL");
+        res.json({valid:false});
+    }
+});
+
+/* ======================================================
+MODULE 13 — DESACTIVATION
+====================================================== */
+
+app.post("/licences/deactivate",(req,res)=>{
+
+    const {cle} = req.body;
 
     const licence = licences.find(l=>l.cle === cle);
 
     if(!licence){
-        envoyerLog("error","Licence inconnue",{ip});
-        return res.json({valid:false});
+        return res.json({success:false});
     }
 
-    const validSignature = signer(cle);
+    licence.active = false;
 
-    if(validSignature !== signature){
-        envoyerLog("error","Signature invalide",{ip});
-        return res.json({valid:false});
-    }
+    sauvegarderFichier();
 
-    // Liaison appareil
-    if(!licence.deviceId){
-        licence.deviceId = deviceId;
-        envoyerLog("info","Licence liée appareil",{deviceId});
-    }
+    envoyerLog("warn","DISABLED",{cle});
 
-    // Vérifie appareil
-    if(licence.deviceId !== deviceId){
-        envoyerLog("error","Licence utilisée sur autre machine",{ip});
-        return res.json({valid:false});
-    }
-
-    if(!licence.active){
-        envoyerLog("error","Licence désactivée",{ip});
-        return res.json({valid:false});
-    }
-
-    envoyerLog("ok","Licence valide",{ip});
-
-    res.json({valid:true});
+    res.json({success:true});
 });
 
 /* ======================================================
-MODULE 09 — ROUTES
+MODULE 14 — HEALTH
+====================================================== */
+
+app.get("/health",(req,res)=>{
+    res.json({
+        status:"ok",
+        licences: licences.length,
+        uptime: process.uptime()
+    });
+});
+
+/* ======================================================
+MODULE 15 — ROUTES
 ====================================================== */
 
 app.get("/",(req,res)=>{
-    res.send("SERVEUR SECURE OK");
+    res.send("LICENCE SERVER READY");
 });
 
 app.get("/ping",(req,res)=>{
@@ -159,9 +306,19 @@ app.get("/ping",(req,res)=>{
 });
 
 /* ======================================================
-MODULE 10 — START
+MODULE 16 — AUTO SAVE
 ====================================================== */
 
+setInterval(()=>{
+    sauvegarderFichier();
+},10000);
+
+/* ======================================================
+MODULE 17 — START
+====================================================== */
+
+chargerFichier();
+
 app.listen(PORT, ()=>{
-    console.log("Serveur sécurisé lancé");
+    console.log("SERVER RUNNING PORT " + PORT);
 });

@@ -8,11 +8,11 @@
 <link rel="manifest" href="manifest.json">
 
 <!-- ======================================================
-MODULE 01 — CSP (OBLIGATOIRE)
+MODULE 01 — CSP (CORRIGÉ)
 ====================================================== -->
 <meta http-equiv="Content-Security-Policy" content="
 default-src 'self' https:;
-connect-src https://licence-server-jlr-0jex.onrender.com;
+connect-src 'self' https://licence-server-jlr-0jex.onrender.com;
 img-src 'self' https: data:;
 script-src 'self' https://cdnjs.cloudflare.com 'unsafe-inline';
 style-src 'self' 'unsafe-inline';
@@ -252,7 +252,29 @@ Connexion serveur...
 
 </div>
 
+<!-- ======================================================
+MODULE 04 — SCRIPT PRINCIPAL
+====================================================== -->
 <script src="licenceManager.js"></script>
+
+<!-- ======================================================
+MODULE 05 — INITIALISATION AUTO
+====================================================== -->
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+
+  console.log("INIT LICENCE MANAGER");
+
+  if(typeof chargerLicences === "function"){
+    chargerLicences();
+  }
+
+  if(typeof testerConnexion === "function"){
+    testerConnexion();
+  }
+
+});
+</script>
 
 </body>
 </html>

@@ -1,12 +1,18 @@
 {
   "name": "licence-server",
   "version": "1.0.0",
+  "description": "Licence server sécurisé VPIJLR 2026",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev": "node server.js",
+    "restart": "npm install && npm start"
   },
   "dependencies": {
     "express": "^4.18.2",
     "cors": "^2.8.5"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }

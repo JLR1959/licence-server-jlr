@@ -24,8 +24,10 @@ function logUI(type, message){
   line.className = "log-line " + color;
   line.innerHTML = `<span class="log-time">[${time}]</span> ${message}`;
 
-  box.appendChild(line);
-  box.scrollTop = box.scrollHeight;
+  if(box){
+    box.appendChild(line);
+    box.scrollTop = box.scrollHeight;
+  }
 }
 
 /* ======================================================
@@ -196,13 +198,17 @@ async function genererLicence(){
   }
 }
 
-/* Petite fonction temporaire pour générer une clé si le serveur n'en génère pas */
+/* ======================================================
+MODULE 07
+GÉNÉRATION CLÉ
+====================================================== */
+
 function genererCleTemp(){
   return "LIC-" + Math.random().toString(36).substring(2,10).toUpperCase();
 }
 
 /* ======================================================
-MODULE 07
+MODULE 08
 ENVOI EMAIL
 ====================================================== */
 
@@ -245,14 +251,14 @@ VPIJLR 2026`
 }
 
 /* ======================================================
-MODULE 08
+MODULE 09
 FILTRE
 ====================================================== */
 
 function filtrer(){
 
   const valeur = document.getElementById("rechercheClient").value.toLowerCase();
-  const lignes = document.querySelectorAll("#tableLicences tbody tr");
+  const lignes = document.querySelectorAll("#listeClients tr");
 
   lignes.forEach((ligne) => {
     ligne.style.display = ligne.innerText.toLowerCase().includes(valeur) ? "" : "none";
@@ -260,7 +266,7 @@ function filtrer(){
 }
 
 /* ======================================================
-MODULE 09
+MODULE 10
 EXPORT PDF
 ====================================================== */
 
@@ -271,7 +277,7 @@ function exportPDF(){
 
   let y = 10;
 
-  document.querySelectorAll("#tableLicences tbody tr").forEach((ligne) => {
+  document.querySelectorAll("#listeClients tr").forEach((ligne) => {
 
     if(ligne.style.display === "none"){
       return;
@@ -287,7 +293,27 @@ function exportPDF(){
 }
 
 /* ======================================================
-MODULE 10
+MODULE 11
+LIVE LOGS (SSE)
+====================================================== */
+
+function connecterLogs(){
+
+  const source = new EventSource(SERVEUR_URL + "/logs");
+
+  source.onmessage = (event)=>{
+    const log = JSON.parse(event.data);
+    logUI(log.type || "info", log.message || "...");
+  };
+
+  source.onerror = ()=>{
+    logUI("error","Connexion LIVE perdue...");
+    setTimeout(connecterLogs,3000);
+  };
+}
+
+/* ======================================================
+MODULE 12
 INITIALISATION
 ====================================================== */
 
@@ -302,54 +328,11 @@ document.addEventListener("DOMContentLoaded", () => {
   setDates();
   ping();
   chargerLicencesServeur();
+  connecterLogs();
 
   setInterval(() => {
     ping();
     chargerLicencesServeur();
   }, 4000);
+
 });
-
-/* ======================================================
-MODULE LIVE LOGS — CLIENT
-====================================================== */
-
-const journal = document.getElementById("journalActivite");
-
-function ajouterLog(log){
-
-    const ligne = document.createElement("div");
-
-    let couleur = "log-info";
-    if(log.type==="ok") couleur = "log-ok";
-    if(log.type==="error") couleur = "log-error";
-
-    ligne.innerHTML = `
-        <span class="log-time">[${log.time}]</span>
-        <span class="${couleur}">${log.message}</span>
-    `;
-
-    journal.appendChild(ligne);
-    journal.scrollTop = journal.scrollHeight;
-}
-
-function connecterLogs(){
-
-    const source = new EventSource("https://licence-server-jlr-0jex.onrender.com/logs");
-
-    source.onmessage = (event)=>{
-        const log = JSON.parse(event.data);
-        ajouterLog(log);
-    };
-
-    source.onerror = ()=>{
-        ajouterLog({
-            time:new Date().toLocaleTimeString(),
-            type:"error",
-            message:"Connexion LIVE perdue..."
-        });
-
-        setTimeout(connecterLogs,3000);
-    };
-}
-
-connecterLogs();
