@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Paiement réussi</title>
+</head>
+
+<body style="background:#0b1220;color:white;text-align:center;padding-top:80px;">
+
+<h1 style="color:#22c55e;">Paiement réussi ✅</h1>
+<p id="status">Activation licence...</p>
+
+<script>
+
+async function activer(){
+
+  try{
+
+    // ======================================================
+    // MODULE 01 — ACTIVATION DIRECTE
+    // ======================================================
+
+    const activation = await fetch("https://licence-server-jlr-0jex.onrender.com/activate-licence", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({})
+    });
+
+    if(!activation.ok){
+      throw new Error("Serveur licence indisponible");
+    }
+
+    const data = await activation.json();
+
+    if(!data.licenceKey){
+      throw new Error("Licence non générée");
+    }
+
+    // ======================================================
+    // MODULE 02 — STOCKAGE
+    // ======================================================
+
+    localStorage.setItem("licence_key", data.licenceKey);
+
+    document.getElementById("status").innerText =
+      "Licence activée ✔\n" + data.licenceKey;
+
+    console.log("LICENCE :", data.licenceKey);
+
+    // ======================================================
+    // MODULE 03 — REDIRECTION
+    // ======================================================
+
+    setTimeout(()=>{
+      window.location.href = "https://vpijlr-logiciel-client-meg5.onrender.com/";
+    },2000);
+
+  }catch(e){
+
+    console.error(e);
+
+    document.getElementById("status").innerText =
+      "❌ ERREUR : " + e.message;
+
+  }
+
+}
+
+activer();
+
+</script>
+
+</body>
+</html>
