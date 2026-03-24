@@ -104,6 +104,27 @@ function chargerFichier(){
 }
 
 /* ======================================================
+MODULE 06.1 — SAUVEGARDE FICHIERS
+====================================================== */
+
+function sauvegarderFichier(){
+
+  try{
+
+    fs.writeFileSync(DATA_FILE, JSON.stringify(licences, null, 2));
+    fs.writeFileSync(STATS_FILE, JSON.stringify(statsJournalieres, null, 2));
+
+    console.log("💾 Données sauvegardées");
+
+  }catch(err){
+
+    console.error("❌ Erreur sauvegarde fichiers :", err);
+
+  }
+
+}
+
+/* ======================================================
 MODULE 07 — SIGNATURE
 ====================================================== */
 
