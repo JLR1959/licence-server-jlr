@@ -7,6 +7,7 @@ const express = require("express");
 const cors = require("cors");
 const fs = require("fs");
 const path = require("path");
+const Stripe = require("stripe");
 
 /* ======================================================
 MODULE 02
@@ -16,10 +17,16 @@ INIT
 const app = express();
 app.use(cors());
 
-app.use(express.json());
-
 /* ======================================================
 MODULE 03
+STRIPE CONFIG (ENV RENDER)
+====================================================== */
+
+const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+/* ======================================================
+MODULE 04
 FICHIERS
 ====================================================== */
 
@@ -27,23 +34,20 @@ const DATA_FILE = path.join(__dirname, "licences.json");
 const LOG_FILE = path.join(__dirname, "logs.txt");
 
 /* ======================================================
-MODULE 04
-LOGS PERSISTANTS
+MODULE 05
+LOGS
 ====================================================== */
 
 function addLog(message) {
-
   const entry = `[${new Date().toLocaleString()}] ${message}`;
-
   console.log(entry);
-
   try {
     fs.appendFileSync(LOG_FILE, entry + "\n");
   } catch (e) {}
 }
 
 /* ======================================================
-MODULE 05
+MODULE 06
 INIT DATA
 ====================================================== */
 
@@ -58,7 +62,7 @@ function initData() {
 initData();
 
 /* ======================================================
-MODULE 06
+MODULE 07
 GENERATION CLE
 ====================================================== */
 
@@ -81,8 +85,8 @@ function genererCleLicence() {
 }
 
 /* ======================================================
-MODULE 07
-ENREGISTRER LICENCE COMPLETE
+MODULE 08
+ENREGISTRER LICENCE
 ====================================================== */
 
 function enregistrerLicence(infos) {
@@ -97,13 +101,9 @@ function enregistrerLicence(infos) {
 
   data.actives.push({
     cle: infos.cle,
-    logiciel: infos.logiciel || "VPIJLR 2026",
-    client: infos.client || "Inconnu",
-    email: infos.email || "",
-    type: infos.type || "achat_1",
-    dateActivation: infos.dateActivation || new Date().toISOString(),
-    dateExpiration: infos.dateExpiration || null,
-    machines: infos.machines || 1,
+    logiciel: "VPIJLR 2026",
+    email: infos.email,
+    dateActivation: new Date().toISOString(),
     statut: "actif"
   });
 
@@ -113,85 +113,89 @@ function enregistrerLicence(infos) {
 }
 
 /* ======================================================
-MODULE 08
-ROUTES BASE
-====================================================== */
-
-app.get("/", (req, res) => {
-  addLog("Ping serveur");
-  res.send("OK");
-});
-
-app.get("/ping", (req, res) => {
-  addLog("Ping reçu");
-  res.send("pong");
-});
-
-app.get("/licences", (req, res) => {
-  try {
-    const data = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
-    addLog("Lecture licences (" + data.actives.length + ")");
-    res.json(data);
-  } catch {
-    res.json({ actives: [] });
-  }
-});
-
-/* ======================================================
 MODULE 09
-CREATION LICENCE MANUELLE (FRONT)
+WEBHOOK STRIPE
 ====================================================== */
 
-app.post("/licences", (req, res) => {
+app.post("/webhook-stripe",
+  express.raw({ type: "application/json" }),
+  (req, res) => {
 
-  const { client, email, type, dateActivation, dateExpiration } = req.body;
+    const sig = req.headers["stripe-signature"];
 
-  const cle = genererCleLicence();
+    let event;
 
-  enregistrerLicence({
-    cle,
-    client,
-    email,
-    type,
-    dateActivation,
-    dateExpiration
-  });
+    try {
+      event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
+    } catch (err) {
+      addLog("❌ Webhook invalide");
+      return res.sendStatus(400);
+    }
 
-  res.json({ success: true, cle });
+    if (event.type === "checkout.session.completed") {
 
+      const session = event.data.object;
+
+      const email = session.customer_details?.email;
+
+      addLog("💰 Paiement Stripe : " + email);
+
+      const cle = genererCleLicence();
+
+      enregistrerLicence({ cle, email });
+
+      addLog("✅ Licence générée : " + cle);
+    }
+
+    res.json({ received: true });
 });
 
 /* ======================================================
 MODULE 10
-LOGS ENDPOINT
+JSON PARSER (APRES WEBHOOK)
 ====================================================== */
 
-app.get("/logs", (req, res) => {
+app.use(express.json());
+
+/* ======================================================
+MODULE 11
+ROUTES BASE
+====================================================== */
+
+app.get("/ping", (req, res) => {
+  res.send("pong");
+});
+
+/* ======================================================
+MODULE 12
+ROUTE LICENCE (CRITIQUE)
+====================================================== */
+
+app.get("/licence/:email", (req, res) => {
+
+  const email = req.params.email;
 
   try {
-    const data = fs.readFileSync(LOG_FILE, "utf8");
-    const lignes = data.split("\n").filter(l => l.trim() !== "");
-    res.json(lignes.slice(-200));
+
+    const data = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+
+    const licence = data.actives.find(l => l.email === email);
+
+    if (!licence) {
+      return res.status(404).json({ error: "Licence introuvable" });
+    }
+
+    res.json({ cle: licence.cle });
+
   } catch {
-    res.json([]);
+    res.status(500).json({ error: "Erreur serveur" });
   }
 
 });
 
 /* ======================================================
-MODULE 11
-ACTIVITE SERVEUR
-====================================================== */
-
-addLog("Serveur prêt");
-
-setInterval(() => {
-  addLog("Heartbeat OK");
-}, 5000);
-
-/* ======================================================
-MODULE 12
-DEMARRAGE
+MODULE 13
+START
 ====================================================== */
 
 const PORT = process.env.PORT || 3000;
