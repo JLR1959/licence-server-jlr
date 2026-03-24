@@ -22,16 +22,18 @@ const SECRET = "JLR_SECRET_ULTRA_SECURE_2026";
 
 const DATA_FILE = path.join(__dirname, "licences.json");
 const BACKUP_FILE = path.join(__dirname, "licences.backup.json");
+const STATS_FILE = path.join(__dirname, "stats.json");
 
 /* ======================================================
 MODULE 03 — STOCKAGE
 ====================================================== */
 
 let licences = [];
+let statsJournalieres = {};
 let clientsSSE = [];
 
 /* ======================================================
-MODULE 04 — GENERATION CLE 42
+MODULE 04 — CLE 42 CARACTERES
 ====================================================== */
 
 function genererCleLicence(){
@@ -40,13 +42,10 @@ function genererCleLicence(){
     const blocs = [];
 
     for(let b = 0; b < 7; b++){
-
         let bloc = "";
-
         for(let i = 0; i < 6; i++){
             bloc += chars.charAt(Math.floor(Math.random() * chars.length));
         }
-
         blocs.push(bloc);
     }
 
@@ -54,7 +53,7 @@ function genererCleLicence(){
 }
 
 /* ======================================================
-MODULE 05 — CHARGEMENT SECURISE
+MODULE 05 — CHARGEMENT
 ====================================================== */
 
 function chargerFichier(){
@@ -63,47 +62,29 @@ function chargerFichier(){
 
         if(fs.existsSync(DATA_FILE)){
             licences = JSON.parse(fs.readFileSync(DATA_FILE,"utf-8"));
-            console.log("DATA LOAD:", licences.length);
-            return;
         }
 
-        if(fs.existsSync(BACKUP_FILE)){
-            licences = JSON.parse(fs.readFileSync(BACKUP_FILE,"utf-8"));
-            console.log("BACKUP LOAD:", licences.length);
-            return;
+        if(fs.existsSync(STATS_FILE)){
+            statsJournalieres = JSON.parse(fs.readFileSync(STATS_FILE,"utf-8"));
         }
-
-        licences = [];
 
     }catch(e){
-
         console.error("LOAD FAIL");
-
-        try{
-            licences = JSON.parse(fs.readFileSync(BACKUP_FILE,"utf-8"));
-        }catch{
-            licences = [];
-        }
+        licences = [];
+        statsJournalieres = {};
     }
 }
 
 /* ======================================================
-MODULE 06 — SAUVEGARDE ATOMIQUE
+MODULE 06 — SAUVEGARDE
 ====================================================== */
 
 function sauvegarderFichier(){
 
     try{
 
-        const temp = DATA_FILE + ".tmp";
-
-        fs.writeFileSync(temp, JSON.stringify(licences,null,2));
-
-        if(fs.existsSync(DATA_FILE)){
-            fs.copyFileSync(DATA_FILE, BACKUP_FILE);
-        }
-
-        fs.renameSync(temp, DATA_FILE);
+        fs.writeFileSync(DATA_FILE, JSON.stringify(licences,null,2));
+        fs.writeFileSync(STATS_FILE, JSON.stringify(statsJournalieres,null,2));
 
     }catch(e){
         console.error("SAVE ERROR");
@@ -178,11 +159,6 @@ app.post("/licences",(req,res)=>{
             signature,
             deviceId: null,
             active: true,
-            client: req.body.client || "",
-            email: req.body.email || "",
-            type: req.body.type || "",
-            dateActivation: req.body.dateActivation || "",
-            dateExpiration: req.body.dateExpiration || "",
             createdAt: new Date().toISOString()
         };
 
@@ -201,15 +177,7 @@ app.post("/licences",(req,res)=>{
 });
 
 /* ======================================================
-MODULE 11 — LISTE
-====================================================== */
-
-app.get("/licences",(req,res)=>{
-    res.json(licences);
-});
-
-/* ======================================================
-MODULE 12 — VALIDATION
+MODULE 11 — VALIDATION LICENCE
 ====================================================== */
 
 app.post("/verify",(req,res)=>{
@@ -218,87 +186,78 @@ app.post("/verify",(req,res)=>{
 
         const {cle, signature, deviceId} = req.body;
 
-        const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-
         const licence = licences.find(l=>l.cle === cle);
 
-        if(!licence){
-            envoyerLog("error","UNKNOWN",{ip});
-            return res.json({valid:false});
-        }
-
-        if(signer(cle) !== signature){
-            envoyerLog("error","BAD SIGN",{ip});
-            return res.json({valid:false});
-        }
+        if(!licence) return res.json({valid:false});
+        if(signer(cle) !== signature) return res.json({valid:false});
 
         if(!licence.deviceId){
             licence.deviceId = deviceId;
             sauvegarderFichier();
-            envoyerLog("info","DEVICE LINK",{deviceId});
         }
 
-        if(licence.deviceId !== deviceId){
-            envoyerLog("error","DEVICE MISMATCH",{ip});
-            return res.json({valid:false});
-        }
-
-        if(!licence.active){
-            envoyerLog("error","DISABLED",{ip});
-            return res.json({valid:false});
-        }
-
-        envoyerLog("ok","VALID",{ip});
+        if(licence.deviceId !== deviceId) return res.json({valid:false});
+        if(!licence.active) return res.json({valid:false});
 
         res.json({valid:true});
 
     }catch(e){
-        envoyerLog("error","VERIFY FAIL");
         res.json({valid:false});
     }
 });
 
 /* ======================================================
-MODULE 13 — DESACTIVATION
+MODULE 12 — COMPTEUR JOURNALIER
 ====================================================== */
 
-app.post("/licences/deactivate",(req,res)=>{
+function dateAujourdhui(){
+  const d = new Date();
+  return d.getFullYear() + "-" +
+         String(d.getMonth()+1).padStart(2,"0") + "-" +
+         String(d.getDate()).padStart(2,"0");
+}
 
-    const {cle} = req.body;
+app.post("/stats/increment",(req,res)=>{
 
-    const licence = licences.find(l=>l.cle === cle);
+    const date = dateAujourdhui();
 
-    if(!licence){
-        return res.json({success:false});
+    if(!statsJournalieres[date]){
+        statsJournalieres[date] = 0;
     }
 
-    licence.active = false;
+    statsJournalieres[date]++;
 
     sauvegarderFichier();
 
-    envoyerLog("warn","DISABLED",{cle});
+    envoyerLog("info","STATS +1",{date,total:statsJournalieres[date]});
 
-    res.json({success:true});
-});
-
-/* ======================================================
-MODULE 14 — HEALTH
-====================================================== */
-
-app.get("/health",(req,res)=>{
     res.json({
-        status:"ok",
-        licences: licences.length,
-        uptime: process.uptime()
+        ok:true,
+        date,
+        total:statsJournalieres[date]
     });
 });
 
+app.get("/stats/today",(req,res)=>{
+
+    const date = dateAujourdhui();
+
+    res.json({
+        date,
+        total: statsJournalieres[date] || 0
+    });
+});
+
+app.get("/stats",(req,res)=>{
+    res.json(statsJournalieres);
+});
+
 /* ======================================================
-MODULE 15 — ROUTES
+MODULE 13 — ROUTES
 ====================================================== */
 
 app.get("/",(req,res)=>{
-    res.send("LICENCE SERVER READY");
+    res.send("SERVER READY");
 });
 
 app.get("/ping",(req,res)=>{
@@ -306,15 +265,7 @@ app.get("/ping",(req,res)=>{
 });
 
 /* ======================================================
-MODULE 16 — AUTO SAVE
-====================================================== */
-
-setInterval(()=>{
-    sauvegarderFichier();
-},10000);
-
-/* ======================================================
-MODULE 17 — START
+MODULE 14 — START
 ====================================================== */
 
 chargerFichier();
