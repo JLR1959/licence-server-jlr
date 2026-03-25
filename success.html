@@ -1,92 +1,194 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-<meta charset="UTF-8">
-<title>Paiement réussi</title>
-</head>
-
-<body style="background:#0b1220;color:white;text-align:center;padding-top:60px;font-family:Arial;">
-
-<!-- ======================================================
-MODULE 01 — LOGO
-====================================================== -->
-
-<img src="logo_jlr.png" style="width:140px;border-radius:50%;margin-bottom:20px;">
-
-<!-- ======================================================
-MODULE 02 — TITRE
-====================================================== -->
-
-<h1 style="color:#22c55e;">Paiement réussi ✅</h1>
-
-<p id="status" style="margin-top:20px;">Activation licence...</p>
-
-<script>
-
 /* ======================================================
-MODULE 03 — CONFIG
+SERVEUR LICENCE JLR — VERSION COMPLETE + TEST EMAIL
 ====================================================== */
 
-const API = "https://licence-server-jlr-0jex.onrender.com";
+const express = require("express");
+const cors = require("cors");
+const fs = require("fs");
+const path = require("path");
+const nodemailer = require("nodemailer");
+
+const app = express();
+
+app.use(cors());
+app.use(express.json());
 
 /* ======================================================
-MODULE 04 — EMAIL
+CONFIG
 ====================================================== */
 
-function getEmail(){
-  const params = new URLSearchParams(window.location.search);
-  return params.get("email");
+const DATA_FILE = path.join(__dirname, "licences.json");
+
+/* ======================================================
+EMAIL CONFIG (HOTMAIL)
+====================================================== */
+
+const transporter = nodemailer.createTransport({
+  host: "smtp.office365.com",
+  port: 587,
+  secure: false,
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
+  }
+});
+
+async function envoyerEmail(email, cle){
+
+  await transporter.sendMail({
+    from: process.env.EMAIL_USER,
+    to: email,
+    subject: "Licence VPIJLR",
+    text: `Votre licence : ${cle}`
+  });
+
 }
 
 /* ======================================================
-MODULE 05 — ACTIVATION
+UTILS
 ====================================================== */
 
-async function activer(){
+function logServeur(msg){
+  console.log(new Date().toISOString(), "-", msg);
+}
 
-  const email = getEmail();
+function genererCleLicence() {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
-  if(!email){
-    document.getElementById("status").innerText =
-      "❌ Email manquant";
-    return;
-  }
-
-  try{
-
-    const res = await fetch(API + "/licence/" + email);
-
-    if(!res.ok){
-      throw new Error("Licence introuvable");
+  function bloc() {
+    let r = "";
+    for (let i = 0; i < 6; i++) {
+      r += chars[Math.floor(Math.random() * chars.length)];
     }
-
-    const data = await res.json();
-
-    localStorage.setItem("licence_key", data.cle);
-
-    document.getElementById("status").innerText =
-      "Licence activée ✔\n" + data.cle;
-
-    setTimeout(()=>{
-      window.location.href = "https://vpijlr-logiciel-client-meg5.onrender.com/";
-    },2000);
-
-  }catch(e){
-
-    document.getElementById("status").innerText =
-      "❌ " + e.message;
-
+    return r;
   }
 
+  return [
+    bloc(), bloc(), bloc(),
+    bloc(), bloc(), bloc(),
+    bloc()
+  ].join("-");
+}
+
+function normaliserStructure(data) {
+  if (Array.isArray(data)) return { actives: data };
+  if (data && Array.isArray(data.actives)) return data;
+  return { actives: [] };
+}
+
+function chargerData() {
+  try {
+    if (!fs.existsSync(DATA_FILE)) return { actives: [] };
+    return normaliserStructure(JSON.parse(fs.readFileSync(DATA_FILE, "utf8")));
+  } catch {
+    return { actives: [] };
+  }
+}
+
+function sauvegarderData(data) {
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), "utf8");
 }
 
 /* ======================================================
-MODULE 06 — START
+PING
 ====================================================== */
 
-window.onload = activer;
+app.get("/ping", (req, res) => {
+  res.send("pong");
+});
 
-</script>
+/* ======================================================
+GET LICENCES
+====================================================== */
 
-</body>
-</html>
+app.get("/licences", (req, res) => {
+  res.json(chargerData());
+});
+
+/* ======================================================
+CREATE LICENCE + EMAIL
+====================================================== */
+
+app.post("/licences", async (req, res) => {
+
+  const data = chargerData();
+
+  const cle = genererCleLicence();
+
+  const licence = {
+    cle,
+    client: req.body.client || "Client",
+    email: req.body.email || req.body.emailClient || "",
+    type: req.body.type || "achat_1",
+    dateActivation: new Date().toISOString().split("T")[0],
+    dateExpiration: req.body.dateExpiration || "",
+    actif: true
+  };
+
+  data.actives.push(licence);
+  sauvegarderData(data);
+
+  try {
+    if(licence.email){
+      await envoyerEmail(licence.email, cle);
+      logServeur("EMAIL ENVOYE: " + licence.email);
+    }
+  } catch(e){
+    logServeur("ERREUR EMAIL: " + e.message);
+  }
+
+  res.json({ success: true, cle });
+
+});
+
+/* ======================================================
+GET LICENCE PAR EMAIL
+====================================================== */
+
+app.get("/licence/:email", (req, res) => {
+
+  const email = req.params.email;
+  const data = chargerData();
+
+  const licence = data.actives.find(l => l.email === email);
+
+  if (!licence) {
+    return res.status(404).json({ error: "Licence introuvable" });
+  }
+
+  res.json({ cle: licence.cle });
+
+});
+
+/* ======================================================
+TEST EMAIL
+====================================================== */
+
+app.get("/test-email", async (req, res) => {
+
+  try {
+
+    await envoyerEmail(
+      "jlouisraymond@hotmail.com",
+      "TEST-EMAIL-123456"
+    );
+
+    res.send("EMAIL ENVOYE");
+
+  } catch (e) {
+
+    res.send("ERREUR EMAIL: " + e.message);
+
+  }
+
+});
+
+/* ======================================================
+PORT
+====================================================== */
+
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  logServeur("SERVEUR ACTIF " + PORT);
+});
