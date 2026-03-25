@@ -1,5 +1,5 @@
 /* ======================================================
-SERVEUR LICENCE JLR — FINAL STABLE (STRIPE + EMAIL)
+SERVEUR LICENCE JLR — FINAL COMPLET (MULTI LICENCES)
 ====================================================== */
 
 const express = require("express");
@@ -12,7 +12,7 @@ const cors = require("cors");
 const app = express();
 
 /* ======================================================
-MODULE 00 — CORS (OBLIGATOIRE)
+MODULE 00 — CORS
 ====================================================== */
 
 app.use(cors());
@@ -27,7 +27,7 @@ const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
 /* ======================================================
-MODULE 02 — EMAIL CONFIG (OFFICE365)
+MODULE 02 — EMAIL (OFFICE365)
 ====================================================== */
 
 const transporter = nodemailer.createTransport({
@@ -77,7 +77,7 @@ function save(data){
 }
 
 /* ======================================================
-MODULE 04 — GENERATION CLE 42 CARACTERES
+MODULE 04 — GENERATION CLE
 ====================================================== */
 
 function genererCle(){
@@ -90,7 +90,7 @@ function genererCle(){
 }
 
 /* ======================================================
-MODULE 05 — ANTI DOUBLON CLE
+MODULE 05 — ANTI DOUBLON
 ====================================================== */
 
 function cleExiste(data, cle){
@@ -136,7 +136,7 @@ app.post("/webhook-stripe",
       console.log("💰 PAIEMENT REÇU :", email);
 
       if(!email){
-        console.log("❌ EMAIL MANQUANT DANS SESSION");
+        console.log("❌ EMAIL MANQUANT");
         return res.json({received:true});
       }
 
@@ -171,13 +171,76 @@ app.post("/webhook-stripe",
 });
 
 /* ======================================================
-MODULE 08 — JSON NORMAL
+MODULE 08 — JSON
 ====================================================== */
 
 app.use(express.json());
 
 /* ======================================================
-MODULE 09 — GET LICENCE
+MODULE 09 — CREATE CHECKOUT SESSION (MULTI PRIX)
+====================================================== */
+
+app.post("/create-checkout-session", async (req, res) => {
+
+  const { email, type } = req.body;
+
+  if (!email || !type) {
+    return res.status(400).json({ error: "Email et type requis" });
+  }
+
+  // 🔥 TES 6 PRIX STRIPE À METTRE ICI
+  const PRICES = {
+
+    mensuelle_1: "price_xxxxx1",
+    annuelle_1: "price_xxxxx2",
+    achat_1: "price_xxxxx3",
+
+    mensuelle_2: "price_xxxxx4",
+    annuelle_2: "price_xxxxx5",
+    achat_2: "price_xxxxx6"
+
+  };
+
+  const priceId = PRICES[type];
+
+  if (!priceId) {
+    return res.status(400).json({ error: "Type licence invalide" });
+  }
+
+  try {
+
+    const session = await stripe.checkout.sessions.create({
+
+      payment_method_types: ["card"],
+      mode: "payment",
+
+      customer_email: email,
+
+      line_items: [
+        {
+          price: priceId,
+          quantity: 1
+        }
+      ],
+
+      success_url: "https://jlr1959.github.io/licence-server-jlr/success.html?session_id={CHECKOUT_SESSION_ID}",
+      cancel_url: "https://jlr1959.github.io/licence-server-jlr/cancel.html"
+
+    });
+
+    res.json({ url: session.url });
+
+  } catch (error) {
+
+    console.log("❌ STRIPE ERROR :", error.message);
+    res.status(500).json({ error: error.message });
+
+  }
+
+});
+
+/* ======================================================
+MODULE 10 — GET LICENCE
 ====================================================== */
 
 app.get("/licence/:email",(req,res)=>{
@@ -194,25 +257,7 @@ app.get("/licence/:email",(req,res)=>{
 });
 
 /* ======================================================
-MODULE 10 — TEST EMAIL
-====================================================== */
-
-app.get("/test-email", async (req,res)=>{
-
-  try{
-    await envoyerEmail(
-      "jlouisraymond@hotmail.com",
-      "AAAAAA-BBBBBB-CCCCCC-DDDDDD-EEEEEE-FFFFFF-GGGGGG"
-    );
-    res.send("EMAIL OK");
-  }catch(e){
-    res.send("EMAIL ERROR : " + e.message);
-  }
-
-});
-
-/* ======================================================
-MODULE 11 — GET SESSION STRIPE (ROBUSTE)
+MODULE 11 — SESSION STRIPE
 ====================================================== */
 
 app.get("/session/:id", async (req,res)=>{
@@ -243,7 +288,25 @@ app.get("/session/:id", async (req,res)=>{
 });
 
 /* ======================================================
-MODULE 12 — START
+MODULE 12 — TEST EMAIL
+====================================================== */
+
+app.get("/test-email", async (req,res)=>{
+
+  try{
+    await envoyerEmail(
+      "jlouisraymond@hotmail.com",
+      "AAAAAA-BBBBBB-CCCCCC-DDDDDD-EEEEEE-FFFFFF-GGGGGG"
+    );
+    res.send("EMAIL OK");
+  }catch(e){
+    res.send("EMAIL ERROR : " + e.message);
+  }
+
+});
+
+/* ======================================================
+MODULE 13 — START
 ====================================================== */
 
 const PORT = process.env.PORT || 3000;
