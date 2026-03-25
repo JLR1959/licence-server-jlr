@@ -1,3 +1,4 @@
+console.log("SERVER VERSION OK");
 /* ======================================================
 SERVEUR LICENCE JLR — VERSION COMPLETE STABLE
 ====================================================== */
