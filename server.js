@@ -1,5 +1,6 @@
+
 /* ======================================================
-SERVEUR LICENCE JLR — RESEND FINAL STABLE
+SERVEUR LICENCE JLR — FINAL COMPLET (RESEND + STRIPE)
 ====================================================== */
 
 const express = require("express");
@@ -20,11 +21,26 @@ ROOT
 ====================================================== */
 
 app.get("/", (req,res)=>{
-  res.send("SERVEUR OK RESEND");
+  res.send("SERVEUR FINAL OK");
 });
 
 /* ======================================================
-EMAIL RESEND (REMPLACE GMAIL)
+STRIPE
+====================================================== */
+
+let stripe = null;
+
+try{
+  if(process.env.STRIPE_SECRET_KEY){
+    stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+    console.log("✅ Stripe chargé");
+  }
+}catch(e){
+  console.log("❌ Stripe error:", e.message);
+}
+
+/* ======================================================
+EMAIL RESEND
 ====================================================== */
 
 async function envoyerEmail(email, cle){
@@ -38,7 +54,7 @@ async function envoyerEmail(email, cle){
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        from: "VPIJLR <jeanlouisraymond160859@gmail.com>",
+        from: `VPIJLR <${process.env.EMAIL_USER}>`,
         to: email,
         subject: "Votre licence VPIJLR",
         html: `
@@ -49,14 +65,10 @@ async function envoyerEmail(email, cle){
       })
     });
 
-    const text = await response.text();
-
-    console.log("📧 RESEND:", text);
+    console.log("📧 EMAIL:", await response.text());
 
   }catch(e){
-
     console.log("❌ EMAIL ERROR:", e.message);
-
   }
 }
 
@@ -128,27 +140,79 @@ app.post("/licences",(req,res)=>{
   res.json({cle});
 });
 
+app.get("/licence/:email",(req,res)=>{
+
+  const data = load();
+
+  const licence = data.actives.find(l=>l.email===req.params.email);
+
+  if(!licence){
+    return res.status(404).json({error:"Licence introuvable"});
+  }
+
+  res.json({cle:licence.cle});
+});
+
 /* ======================================================
-STRIPE
+CREATE CHECKOUT SESSION
 ====================================================== */
 
-let stripe = null;
+app.post("/create-checkout-session", async (req,res)=>{
 
-try{
-  if(process.env.STRIPE_SECRET_KEY){
-    stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+  if(!stripe){
+    return res.status(500).json({error:"Stripe non configuré"});
   }
-}catch{}
+
+  const { email } = req.body;
+
+  if(!email){
+    return res.status(400).json({error:"Email requis"});
+  }
+
+  try{
+
+    const session = await stripe.checkout.sessions.create({
+
+      payment_method_types:["card"],
+      mode:"payment",
+      customer_email: email,
+
+      line_items:[
+        {
+          price_data:{
+            currency:"cad",
+            product_data:{ name:"Licence VPIJLR" },
+            unit_amount:1000
+          },
+          quantity:1
+        }
+      ],
+
+      success_url:"https://jlr1959.github.io/licence-manager-ui/success.html?session_id={CHECKOUT_SESSION_ID}",
+      cancel_url:"https://jlr1959.github.io/licence-manager-ui/cancel.html"
+
+    });
+
+    res.json({url:session.url});
+
+  }catch(e){
+    console.log("❌ Stripe error:", e.message);
+    res.status(500).json({error:e.message});
+  }
+
+});
 
 /* ======================================================
-WEBHOOK
+WEBHOOK STRIPE
 ====================================================== */
 
 app.post("/webhook-stripe",
   express.raw({type:"application/json"}),
   async (req,res)=>{
 
-    if(!stripe) return res.json({received:true});
+    if(!stripe){
+      return res.json({received:true});
+    }
 
     let event;
 
@@ -158,7 +222,8 @@ app.post("/webhook-stripe",
         req.headers["stripe-signature"],
         process.env.STRIPE_WEBHOOK_SECRET
       );
-    }catch{
+    }catch(err){
+      console.log("❌ Webhook error:", err.message);
       return res.status(400).send("Webhook Error");
     }
 
@@ -193,13 +258,44 @@ app.post("/webhook-stripe",
 });
 
 /* ======================================================
+SESSION STRIPE (FIX FINAL)
+====================================================== */
+
+app.get("/session/:id", async (req,res)=>{
+
+  if(!stripe){
+    return res.status(500).json({error:"Stripe non configuré"});
+  }
+
+  try{
+
+    const session = await stripe.checkout.sessions.retrieve(req.params.id);
+
+    const email =
+      session.customer_details?.email ||
+      session.customer_email;
+
+    if(!email){
+      return res.status(404).json({error:"Email introuvable"});
+    }
+
+    res.json({ email });
+
+  }catch(e){
+    console.log("❌ SESSION ERROR:", e.message);
+    res.status(500).json({error:"Session invalide"});
+  }
+
+});
+
+/* ======================================================
 TEST EMAIL
 ====================================================== */
 
 app.get("/test-email", async (req,res)=>{
 
   await envoyerEmail(
-    "TON_EMAIL_ICI@gmail.com",
+    process.env.EMAIL_USER,
     "AAAAAA-BBBBBB-CCCCCC-DDDDDD-EEEEEE-FFFFFF-GGGGGG"
   );
 
@@ -213,5 +309,5 @@ START
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT,()=>{
-  console.log("🚀 SERVEUR RESEND OK");
+  console.log("🚀 SERVEUR FINAL COMPLET");
 });
