@@ -89,7 +89,6 @@ app.post("/licences", (req, res) => {
     return res.status(400).json({ erreur: "Licence invalide" });
   }
 
-  // Anti doublon
   const existe = licences.find(l => l.cle === licence.cle);
 
   if (existe) {
@@ -173,12 +172,10 @@ app.post("/validate", (req, res) => {
     return res.json({ status: "invalid" });
   }
 
-  // Désactivée
   if (licence.actif === false) {
     return res.json({ status: "disabled" });
   }
 
-  // Expiration
   if (licence.expiration) {
     const today = new Date();
     const expiration = new Date(licence.expiration);
@@ -214,6 +211,27 @@ app.post("/verifier-acces", (req, res) => {
     autorise: licence.actif !== false,
     licence
   });
+
+});
+
+/* ======================================================
+MODULE 99
+GET LICENCE PAR EMAIL
+====================================================== */
+
+app.get("/licence/:email", (req, res) => {
+
+  const email = req.params.email;
+
+  const licences = chargerLicences();
+
+  const licence = licences.find(l => l.email === email);
+
+  if (!licence) {
+    return res.status(404).json({ error: "Licence introuvable" });
+  }
+
+  res.json({ cle: licence.cle });
 
 });
 
