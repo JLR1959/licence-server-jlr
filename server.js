@@ -38,7 +38,7 @@ async function envoyerEmail(email, cle){
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        from: "VPIJLR <onboarding@resend.dev>",
+        from: "VPIJLR <jeanlouisraymond160859@gmail.com>",
         to: email,
         subject: "Votre licence VPIJLR",
         html: `
