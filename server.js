@@ -11,7 +11,7 @@ const nodemailer = require("nodemailer");
 const app = express();
 
 /* ======================================================
-CONFIG
+MODULE 01 — CONFIG
 ====================================================== */
 
 const DATA_FILE = path.join(__dirname, "licences.json");
@@ -20,7 +20,7 @@ const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
 /* ======================================================
-EMAIL CONFIG
+MODULE 02 — EMAIL CONFIG (OFFICE365)
 ====================================================== */
 
 const transporter = nodemailer.createTransport({
@@ -34,23 +34,26 @@ const transporter = nodemailer.createTransport({
 });
 
 async function envoyerEmail(email, cle){
+
   await transporter.sendMail({
-    from: process.env.EMAIL_USER,
+    from: `"VPIJLR" <${process.env.EMAIL_USER}>`,
     to: email,
     subject: "Votre licence VPIJLR",
-    text: `Bonjour,
+    text:
+`Bonjour,
 
 Voici votre clé licence :
 
 ${cle}
 
-Merci de votre confiance.
-`
+Merci de votre confiance.`
   });
+
+  console.log("📧 EMAIL ENVOYÉ :", email);
 }
 
 /* ======================================================
-UTILS
+MODULE 03 — DATA
 ====================================================== */
 
 function load(){
@@ -66,20 +69,35 @@ function save(data){
   fs.writeFileSync(DATA_FILE, JSON.stringify(data,null,2));
 }
 
+/* ======================================================
+MODULE 04 — GENERATION CLE 42 CARACTERES
+====================================================== */
+
 function genererCle(){
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  const bloc = () => Array.from({length:6},()=>chars[Math.floor(Math.random()*chars.length)]).join("");
+
+  const bloc = () =>
+    Array.from({length:6},()=>chars[Math.floor(Math.random()*chars.length)]).join("");
+
   return [bloc(),bloc(),bloc(),bloc(),bloc(),bloc(),bloc()].join("-");
 }
 
 /* ======================================================
-PING
+MODULE 05 — ANTI DOUBLON CLE
+====================================================== */
+
+function cleExiste(data, cle){
+  return data.actives.some(l => l.cle === cle);
+}
+
+/* ======================================================
+MODULE 06 — PING
 ====================================================== */
 
 app.get("/ping",(req,res)=>res.send("pong"));
 
 /* ======================================================
-WEBHOOK STRIPE
+MODULE 07 — WEBHOOK STRIPE
 ====================================================== */
 
 app.post("/webhook-stripe",
@@ -93,38 +111,47 @@ app.post("/webhook-stripe",
     try{
       event = stripe.webhooks.constructEvent(req.body,sig,endpointSecret);
     }catch(err){
-      console.log("WEBHOOK ERROR", err.message);
+      console.log("❌ WEBHOOK ERROR :", err.message);
       return res.status(400).send("Webhook Error");
     }
+
+    console.log("🔔 EVENT :", event.type);
 
     if(event.type === "checkout.session.completed"){
 
       const session = event.data.object;
-
       const email = session.customer_details?.email;
 
-      console.log("PAIEMENT RECU :", email);
+      console.log("💰 PAIEMENT REÇU :", email);
 
-      if(!email) return res.json({received:true});
+      if(!email){
+        console.log("❌ EMAIL MANQUANT");
+        return res.json({received:true});
+      }
 
       const data = load();
 
-      const cle = genererCle();
+      let cle;
 
-      data.actives.push({
+      do{
+        cle = genererCle();
+      }while(cleExiste(data, cle));
+
+      const licence = {
         cle,
         email,
         actif:true,
         date:new Date().toISOString()
-      });
+      };
+
+      data.actives.push(licence);
 
       save(data);
 
       try{
         await envoyerEmail(email, cle);
-        console.log("EMAIL OK :", email);
       }catch(e){
-        console.log("EMAIL ERROR :", e.message);
+        console.log("❌ EMAIL ERROR :", e.message);
       }
 
     }
@@ -133,13 +160,13 @@ app.post("/webhook-stripe",
 });
 
 /* ======================================================
-JSON NORMAL
+MODULE 08 — JSON NORMAL
 ====================================================== */
 
 app.use(express.json());
 
 /* ======================================================
-GET LICENCE PAR EMAIL
+MODULE 09 — GET LICENCE
 ====================================================== */
 
 app.get("/licence/:email",(req,res)=>{
@@ -156,11 +183,29 @@ app.get("/licence/:email",(req,res)=>{
 });
 
 /* ======================================================
-PORT
+MODULE 10 — TEST EMAIL
+====================================================== */
+
+app.get("/test-email", async (req,res)=>{
+
+  try{
+    await envoyerEmail(
+      "jlouisraymond@hotmail.com",
+      "AAAAAA-BBBBBB-CCCCCC-DDDDDD-EEEEEE-FFFFFF-GGGGGG"
+    );
+    res.send("EMAIL OK");
+  }catch(e){
+    res.send("EMAIL ERROR : " + e.message);
+  }
+
+});
+
+/* ======================================================
+MODULE 11 — START
 ====================================================== */
 
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT,()=>{
-  console.log("SERVEUR ACTIF PORT",PORT);
+  console.log("🚀 SERVEUR ACTIF PORT",PORT);
 });
