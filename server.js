@@ -6,6 +6,7 @@ import Stripe from "stripe";
 import { Resend } from "resend";
 
 const app = express();
+app.use(express.json());
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -20,7 +21,6 @@ const cache = new Map();
 // ==============================
 function generateLicense() {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-
   const block = () =>
     Array.from({ length: 6 }, () =>
       chars[Math.floor(Math.random() * chars.length)]
@@ -41,46 +41,59 @@ async function sendMail(email, licence) {
       <h2>Licence activée</h2>
       <p><b>${licence}</b></p>
       <p>VPIJLR 2026 activé</p>
-      <a href="https://ton-app.com/login">Accéder au SaaS</a>
+      <a href="https://ton-app.com/login">Accéder</a>
     `,
   });
 }
 
 // ==============================
-// MODULE 05 - ACTIVATE
+// MODULE 05 - CREATE CHECKOUT
+// ==============================
+app.post("/create-checkout", async (req, res) => {
+  const session = await stripe.checkout.sessions.create({
+    payment_method_types: ["card"],
+    mode: "payment",
+
+    line_items: [
+      {
+        price: "price_xxx", // ← MET TON VRAI PRICE ID
+        quantity: 1,
+      },
+    ],
+
+    success_url:
+      "https://jlr1959.github.io/licence-manager-ui/success.html?session_id={CHECKOUT_SESSION_ID}",
+
+    cancel_url:
+      "https://jlr1959.github.io/licence-manager-ui/cancel.html",
+  });
+
+  res.json({ url: session.url });
+});
+
+// ==============================
+// MODULE 06 - ACTIVATE
 // ==============================
 app.get("/activate/:id", async (req, res) => {
   const id = req.params.id;
 
-  try {
-    // déjà généré
-    if (cache.has(id)) {
-      return res.json({ licence: cache.get(id) });
-    }
-
-    // récupérer Stripe
-    const session = await stripe.checkout.sessions.retrieve(id);
-
-    const email = session.customer_details?.email;
-
-    if (!email) throw new Error("email missing");
-
-    // créer licence
-    const licence = generateLicense();
-
-    cache.set(id, licence);
-
-    // email (non bloquant)
-    sendMail(email, licence);
-
-    return res.json({ licence });
-
-  } catch (e) {
-    return res.status(500).json({ error: e.message });
+  if (cache.has(id)) {
+    return res.json({ licence: cache.get(id) });
   }
+
+  const session = await stripe.checkout.sessions.retrieve(id);
+  const email = session.customer_details?.email;
+
+  const licence = generateLicense();
+
+  cache.set(id, licence);
+
+  sendMail(email, licence);
+
+  res.json({ licence });
 });
 
 // ==============================
-// MODULE 06 - START
+// MODULE 07 - START
 // ==============================
 app.listen(3000, () => console.log("OK"));
