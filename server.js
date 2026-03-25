@@ -7,12 +7,22 @@ const app = express();
 app.use(express.json());
 
 // ==============================
-// MODULE 02 - DATABASE (TEMP)
+// MODULE 02 - CORS FIX
+// ==============================
+app.use((req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  next();
+});
+
+// ==============================
+// MODULE 03 - DATABASE
 // ==============================
 const users = new Map();
 
 // ==============================
-// MODULE 03 - GENERATE LICENCE
+// MODULE 04 - LICENCE
 // ==============================
 function generateLicense() {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -26,14 +36,14 @@ function generateLicense() {
 }
 
 // ==============================
-// MODULE 04 - ROOT (TEST)
+// MODULE 05 - ROOT
 // ==============================
 app.get("/", (req, res) => {
   res.send("✅ Licence server actif");
 });
 
 // ==============================
-// MODULE 05 - ACTIVATE USER
+// MODULE 06 - ACTIVATE
 // ==============================
 app.get("/activate", (req, res) => {
 
@@ -45,12 +55,10 @@ app.get("/activate", (req, res) => {
     });
   }
 
-  // si déjà activé
   if (users.has(email)) {
     return res.json(users.get(email));
   }
 
-  // créer licence
   const licence = generateLicense();
 
   const user = {
@@ -63,23 +71,17 @@ app.get("/activate", (req, res) => {
 
   users.set(email, user);
 
-  console.log("NOUVEL UTILISATEUR:", user);
+  console.log("USER:", user);
 
   return res.json(user);
 });
 
 // ==============================
-// MODULE 06 - CHECK ACCESS SaaS
+// MODULE 07 - CHECK ACCESS
 // ==============================
 app.post("/check-access", (req, res) => {
 
   const { email } = req.body;
-
-  if (!email) {
-    return res.status(400).json({
-      error: "email requis"
-    });
-  }
 
   const user = users.get(email);
 
@@ -97,15 +99,7 @@ app.post("/check-access", (req, res) => {
 });
 
 // ==============================
-// MODULE 07 - DEBUG (OPTIONNEL)
-// ==============================
-app.get("/debug/users", (req, res) => {
-  const allUsers = Array.from(users.values());
-  res.json(allUsers);
-});
-
-// ==============================
-// MODULE 08 - START SERVER
+// MODULE 08 - START
 // ==============================
 const PORT = process.env.PORT || 3000;
 
