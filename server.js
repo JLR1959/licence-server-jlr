@@ -1,6 +1,5 @@
-
 /* ======================================================
-SERVEUR LICENCE JLR — FINAL STABLE (EMAIL PRIORITÉ)
+SERVEUR LICENCE JLR — FINAL STABLE EMAIL GARANTI
 ====================================================== */
 
 const express = require("express");
@@ -17,11 +16,12 @@ MODULE 00 — BASE
 ====================================================== */
 
 app.use(cors());
+app.use(express.json());
 
 const DATA_FILE = path.join(__dirname, "licences.json");
 
 /* ======================================================
-MODULE 01 — ROOT (FIX CRITIQUE)
+MODULE 01 — ROOT (IMPORTANT)
 ====================================================== */
 
 app.get("/", (req,res)=>{
@@ -29,7 +29,7 @@ app.get("/", (req,res)=>{
 });
 
 /* ======================================================
-MODULE 02 — STRIPE (SAFE LOAD)
+MODULE 02 — STRIPE SAFE
 ====================================================== */
 
 let stripe = null;
@@ -39,14 +39,14 @@ try{
     stripe = Stripe(process.env.STRIPE_SECRET_KEY);
     console.log("✅ Stripe chargé");
   }else{
-    console.log("⚠️ Stripe désactivé");
+    console.log("⚠️ Stripe non configuré");
   }
 }catch(e){
   console.log("❌ Stripe error:", e.message);
 }
 
 /* ======================================================
-MODULE 03 — EMAIL (GMAIL STABLE)
+MODULE 03 — EMAIL (ANTI BLOCAGE)
 ====================================================== */
 
 let transporter = null;
@@ -61,7 +61,7 @@ try{
   });
   console.log("✅ Email prêt");
 }catch(e){
-  console.log("❌ Email error:", e.message);
+  console.log("❌ Email init error:", e.message);
 }
 
 async function envoyerEmail(email, cle){
@@ -71,11 +71,15 @@ async function envoyerEmail(email, cle){
     return;
   }
 
-  await transporter.sendMail({
-    from: `"VPIJLR" <${process.env.EMAIL_USER}>`,
-    to: email,
-    subject: "Votre licence VPIJLR",
-    text:
+  try{
+
+    await Promise.race([
+
+      transporter.sendMail({
+        from: `"VPIJLR" <${process.env.EMAIL_USER}>`,
+        to: email,
+        subject: "Votre licence VPIJLR",
+        text:
 `Bonjour,
 
 Voici votre clé licence :
@@ -83,9 +87,21 @@ Voici votre clé licence :
 ${cle}
 
 Merci de votre confiance.`
-  });
+      }),
 
-  console.log("📧 EMAIL ENVOYÉ :", email);
+      new Promise((_, reject)=>
+        setTimeout(()=>reject(new Error("Timeout email")),8000)
+      )
+
+    ]);
+
+    console.log("📧 EMAIL ENVOYÉ :", email);
+
+  }catch(e){
+
+    console.log("❌ EMAIL ERROR :", e.message);
+
+  }
 }
 
 /* ======================================================
@@ -96,7 +112,8 @@ function load(){
   try{
     if(!fs.existsSync(DATA_FILE)) return { actives: [] };
     return JSON.parse(fs.readFileSync(DATA_FILE,"utf8"));
-  }catch{
+  }catch(e){
+    console.log("❌ JSON ERROR:", e.message);
     return { actives: [] };
   }
 }
@@ -111,10 +128,8 @@ MODULE 05 — GENERATION CLE
 
 function genererCle(){
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-
   const bloc = () =>
     Array.from({length:6},()=>chars[Math.floor(Math.random()*chars.length)]).join("");
-
   return [bloc(),bloc(),bloc(),bloc(),bloc(),bloc(),bloc()].join("-");
 }
 
@@ -125,13 +140,7 @@ MODULE 06 — PING
 app.get("/ping",(req,res)=>res.send("pong"));
 
 /* ======================================================
-MODULE 07 — JSON NORMAL
-====================================================== */
-
-app.use(express.json());
-
-/* ======================================================
-MODULE 08 — GET ALL LICENCES
+MODULE 07 — GET ALL LICENCES
 ====================================================== */
 
 app.get("/licences",(req,res)=>{
@@ -140,7 +149,7 @@ app.get("/licences",(req,res)=>{
 });
 
 /* ======================================================
-MODULE 09 — CREATE LICENCE (MANUEL)
+MODULE 08 — CREATE LICENCE (MANUEL)
 ====================================================== */
 
 app.post("/licences",(req,res)=>{
@@ -163,7 +172,6 @@ app.post("/licences",(req,res)=>{
   };
 
   data.actives.push(licence);
-
   save(data);
 
   envoyerEmail(email, cle);
@@ -172,7 +180,7 @@ app.post("/licences",(req,res)=>{
 });
 
 /* ======================================================
-MODULE 10 — GET LICENCE PAR EMAIL
+MODULE 09 — GET LICENCE PAR EMAIL
 ====================================================== */
 
 app.get("/licence/:email",(req,res)=>{
@@ -189,7 +197,7 @@ app.get("/licence/:email",(req,res)=>{
 });
 
 /* ======================================================
-MODULE 11 — CREATE CHECKOUT SESSION
+MODULE 10 — CREATE CHECKOUT SESSION
 ====================================================== */
 
 app.post("/create-checkout-session", async (req,res)=>{
@@ -238,7 +246,7 @@ app.post("/create-checkout-session", async (req,res)=>{
 });
 
 /* ======================================================
-MODULE 12 — WEBHOOK STRIPE
+MODULE 11 — WEBHOOK STRIPE
 ====================================================== */
 
 app.post("/webhook-stripe",
@@ -290,37 +298,37 @@ app.post("/webhook-stripe",
 
       save(data);
 
-      try{
-        await envoyerEmail(email, cle);
-      }catch(e){
-        console.log("❌ Email error:", e.message);
-      }
-
+      envoyerEmail(email, cle);
     }
 
     res.json({received:true});
 });
 
 /* ======================================================
-MODULE 13 — TEST EMAIL
+MODULE 12 — TEST EMAIL
 ====================================================== */
 
 app.get("/test-email", async (req,res)=>{
 
   try{
+
     await envoyerEmail(
       process.env.EMAIL_USER,
       "AAAAAA-BBBBBB-CCCCCC-DDDDDD-EEEEEE-FFFFFF-GGGGGG"
     );
-    res.send("EMAIL OK");
+
+    res.send("EMAIL OK (ou tentative envoyée)");
+
   }catch(e){
+
     res.send("EMAIL ERROR : " + e.message);
+
   }
 
 });
 
 /* ======================================================
-MODULE 14 — START
+MODULE 13 — START
 ====================================================== */
 
 const PORT = process.env.PORT || 3000;
