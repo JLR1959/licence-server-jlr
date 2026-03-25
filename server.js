@@ -1,11 +1,13 @@
 /* ======================================================
-SERVEUR LICENCE JLR — FINAL STABLE AVEC STRIPE SAFE
+SERVEUR LICENCE JLR — FINAL STABLE (EMAIL PRIORITÉ)
 ====================================================== */
 
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
 const cors = require("cors");
+const Stripe = require("stripe");
+const nodemailer = require("nodemailer");
 
 const app = express();
 
@@ -14,20 +16,78 @@ MODULE 00 — BASE
 ====================================================== */
 
 app.use(cors());
-app.use(express.json());
 
 const DATA_FILE = path.join(__dirname, "licences.json");
 
 /* ======================================================
-MODULE 01 — DATA
+MODULE 01 — STRIPE (SAFE LOAD)
+====================================================== */
+
+let stripe = null;
+
+try{
+  if(process.env.STRIPE_SECRET_KEY){
+    stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+    console.log("✅ Stripe chargé");
+  }else{
+    console.log("⚠️ Stripe désactivé");
+  }
+}catch(e){
+  console.log("❌ Stripe error:", e.message);
+}
+
+/* ======================================================
+MODULE 02 — EMAIL (GMAIL STABLE)
+====================================================== */
+
+let transporter = null;
+
+try{
+  transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS
+    }
+  });
+  console.log("✅ Email prêt");
+}catch(e){
+  console.log("❌ Email error:", e.message);
+}
+
+async function envoyerEmail(email, cle){
+
+  if(!transporter){
+    console.log("❌ Email non configuré");
+    return;
+  }
+
+  await transporter.sendMail({
+    from: `"VPIJLR" <${process.env.EMAIL_USER}>`,
+    to: email,
+    subject: "Votre licence VPIJLR",
+    text:
+`Bonjour,
+
+Voici votre clé licence :
+
+${cle}
+
+Merci de votre confiance.`
+  });
+
+  console.log("📧 EMAIL ENVOYÉ :", email);
+}
+
+/* ======================================================
+MODULE 03 — DATA
 ====================================================== */
 
 function load(){
   try{
     if(!fs.existsSync(DATA_FILE)) return { actives: [] };
     return JSON.parse(fs.readFileSync(DATA_FILE,"utf8"));
-  }catch(e){
-    console.log("❌ JSON ERROR:", e.message);
+  }catch{
     return { actives: [] };
   }
 }
@@ -37,24 +97,32 @@ function save(data){
 }
 
 /* ======================================================
-MODULE 02 — GENERATION CLE
+MODULE 04 — GENERATION CLE
 ====================================================== */
 
 function genererCle(){
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+
   const bloc = () =>
     Array.from({length:6},()=>chars[Math.floor(Math.random()*chars.length)]).join("");
+
   return [bloc(),bloc(),bloc(),bloc(),bloc(),bloc(),bloc()].join("-");
 }
 
 /* ======================================================
-MODULE 03 — PING
+MODULE 05 — PING
 ====================================================== */
 
 app.get("/ping",(req,res)=>res.send("pong"));
 
 /* ======================================================
-MODULE 04 — GET LICENCES
+MODULE 06 — JSON NORMAL
+====================================================== */
+
+app.use(express.json());
+
+/* ======================================================
+MODULE 07 — GET ALL LICENCES
 ====================================================== */
 
 app.get("/licences",(req,res)=>{
@@ -63,7 +131,7 @@ app.get("/licences",(req,res)=>{
 });
 
 /* ======================================================
-MODULE 05 — CREATE LICENCE (MANUEL / TEST)
+MODULE 08 — CREATE LICENCE (MANUEL)
 ====================================================== */
 
 app.post("/licences",(req,res)=>{
@@ -86,31 +154,34 @@ app.post("/licences",(req,res)=>{
   };
 
   data.actives.push(licence);
+
   save(data);
+
+  // envoi email direct
+  envoyerEmail(email, cle);
 
   res.json(licence);
 });
 
 /* ======================================================
-MODULE 06 — STRIPE SAFE LOAD
+MODULE 09 — GET LICENCE PAR EMAIL
 ====================================================== */
 
-let stripe = null;
+app.get("/licence/:email",(req,res)=>{
 
-try{
-  if(process.env.STRIPE_SECRET_KEY){
-    const Stripe = require("stripe");
-    stripe = Stripe(process.env.STRIPE_SECRET_KEY);
-    console.log("✅ Stripe chargé");
-  }else{
-    console.log("⚠️ Stripe désactivé (clé absente)");
+  const data = load();
+
+  const licence = data.actives.find(l=>l.email===req.params.email);
+
+  if(!licence){
+    return res.status(404).json({error:"Licence introuvable"});
   }
-}catch(e){
-  console.log("❌ Stripe error:", e.message);
-}
+
+  res.json({cle:licence.cle});
+});
 
 /* ======================================================
-MODULE 07 — CREATE CHECKOUT SESSION (SAFE)
+MODULE 10 — CREATE CHECKOUT SESSION
 ====================================================== */
 
 app.post("/create-checkout-session", async (req,res)=>{
@@ -144,35 +215,104 @@ app.post("/create-checkout-session", async (req,res)=>{
         }
       ],
 
-      success_url:"https://jlr1959.github.io/licence-server-jlr/success.html",
-      cancel_url:"https://jlr1959.github.io/licence-server-jlr/cancel.html"
+      success_url:"https://jlr1959.github.io/Interface/success.html",
+      cancel_url:"https://jlr1959.github.io/Interface/cancel.html"
 
     });
 
     res.json({url:session.url});
 
   }catch(e){
-    console.log("❌ Stripe session error:", e.message);
+    console.log("❌ Stripe error:", e.message);
     res.status(500).json({error:e.message});
   }
 
 });
 
 /* ======================================================
-MODULE 08 — WEBHOOK (SAFE)
+MODULE 11 — WEBHOOK STRIPE (EMAIL AUTO)
 ====================================================== */
 
-app.post("/webhook-stripe", express.raw({type:"application/json"}), (req,res)=>{
+app.post("/webhook-stripe",
+  express.raw({type:"application/json"}),
+  async (req,res)=>{
 
-  console.log("🔔 Webhook reçu");
+    if(!stripe){
+      return res.json({received:true});
+    }
 
-  // volontairement simple pour éviter crash
+    const sig = req.headers["stripe-signature"];
 
-  res.json({received:true});
+    let event;
+
+    try{
+      event = stripe.webhooks.constructEvent(
+        req.body,
+        sig,
+        process.env.STRIPE_WEBHOOK_SECRET
+      );
+    }catch(err){
+      console.log("❌ Webhook error:", err.message);
+      return res.status(400).send("Webhook Error");
+    }
+
+    if(event.type === "checkout.session.completed"){
+
+      const session = event.data.object;
+
+      const email =
+        session.customer_details?.email ||
+        session.customer_email;
+
+      if(!email){
+        console.log("❌ Email manquant webhook");
+        return res.json({received:true});
+      }
+
+      const data = load();
+
+      const cle = genererCle();
+
+      data.actives.push({
+        cle,
+        email,
+        actif:true,
+        date:new Date().toISOString()
+      });
+
+      save(data);
+
+      try{
+        await envoyerEmail(email, cle);
+      }catch(e){
+        console.log("❌ Email error:", e.message);
+      }
+
+    }
+
+    res.json({received:true});
 });
 
 /* ======================================================
-MODULE 09 — START
+MODULE 12 — TEST EMAIL
+====================================================== */
+
+app.get("/test-email", async (req,res)=>{
+
+  try{
+    await envoyerEmail(
+      process.env.EMAIL_USER,
+      "AAAAAA-BBBBBB-CCCCCC-DDDDDD-EEEEEE-FFFFFF-GGGGGG"
+    );
+    res.send("EMAIL OK");
+  }catch(e){
+    res.send("EMAIL ERROR : " + e.message);
+  }
+
+});
+
+/* ======================================================
+MODULE 13 — START
 ====================================================== */
 
 const PORT = process.env.PORT || 3000;
