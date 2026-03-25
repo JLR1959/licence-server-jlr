@@ -7,8 +7,15 @@ const fs = require("fs");
 const path = require("path");
 const Stripe = require("stripe");
 const nodemailer = require("nodemailer");
+const cors = require("cors");
 
 const app = express();
+
+/* ======================================================
+MODULE 00 — CORS (OBLIGATOIRE)
+====================================================== */
+
+app.use(cors());
 
 /* ======================================================
 MODULE 01 — CONFIG
