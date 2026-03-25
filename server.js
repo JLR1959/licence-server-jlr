@@ -1,5 +1,5 @@
 /* ======================================================
-SERVEUR LICENCE JLR — VERSION COMPLETE COMPATIBLE FRONT
+SERVEUR LICENCE JLR — VERSION COMPLETE STABLE
 ====================================================== */
 
 const express = require("express");
@@ -26,53 +26,17 @@ function logServeur(msg){
   console.log(new Date().toISOString(), "-", msg);
 }
 
-function genererCleLicence() {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-
-  function bloc() {
-    let r = "";
-    for (let i = 0; i < 6; i++) {
-      r += chars[Math.floor(Math.random() * chars.length)];
-    }
-    return r;
-  }
-
-  return [
-    bloc(), bloc(), bloc(),
-    bloc(), bloc(), bloc(),
-    bloc()
-  ].join("-");
-}
-
-function normaliserStructure(data) {
-  if (Array.isArray(data)) {
-    return { actives: data };
-  }
-
-  if (data && Array.isArray(data.actives)) {
-    return data;
-  }
-
-  return { actives: [] };
-}
-
-function chargerData() {
+function chargerLicences() {
   try {
-    if (!fs.existsSync(DATA_FILE)) {
-      return { actives: [] };
-    }
-
-    const raw = fs.readFileSync(DATA_FILE, "utf8");
-    const parsed = JSON.parse(raw);
-
-    return normaliserStructure(parsed);
+    if (!fs.existsSync(DATA_FILE)) return [];
+    return JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
   } catch {
-    return { actives: [] };
+    return [];
   }
 }
 
-function sauvegarderData(data) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(normaliserStructure(data), null, 2), "utf8");
+function sauvegarderLicences(data) {
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), "utf8");
 }
 
 /* ======================================================
@@ -80,7 +44,7 @@ PING (RENDER)
 ====================================================== */
 
 app.get("/ping", (req, res) => {
-  res.send("pong");
+  res.send("OK");
 });
 
 /* ======================================================
@@ -96,11 +60,10 @@ API STATUS
 ====================================================== */
 
 app.get("/api", (req, res) => {
-  const data = chargerData();
-
+  const licences = chargerLicences();
   res.json({
     status: "OK",
-    total: data.actives.length,
+    total: licences.length,
     date: new Date()
   });
 });
@@ -110,8 +73,7 @@ GET LICENCES
 ====================================================== */
 
 app.get("/licences", (req, res) => {
-  const data = chargerData();
-  res.json(data);
+  res.json(chargerLicences());
 });
 
 /* ======================================================
@@ -120,33 +82,28 @@ POST LICENCE (CREATE)
 
 app.post("/licences", (req, res) => {
 
-  const data = chargerData();
-  const { client, email, type, dateActivation, dateExpiration } = req.body;
+  const licences = chargerLicences();
+  const licence = req.body;
 
-  const cle = genererCleLicence();
-
-  const existe = data.actives.find(l => l.cle === cle);
-
-  if (existe) {
-    return res.status(400).json({ erreur: "Collision licence, recommencez" });
+  if (!licence || !licence.cle) {
+    return res.status(400).json({ erreur: "Licence invalide" });
   }
 
-  const licence = {
-    cle,
-    client: client || "Client",
-    email: email || "",
-    type: type || "achat_1",
-    dateActivation: dateActivation || new Date().toISOString().split("T")[0],
-    dateExpiration: dateExpiration || "",
-    actif: true
-  };
+  // Anti doublon
+  const existe = licences.find(l => l.cle === licence.cle);
 
-  data.actives.push(licence);
-  sauvegarderData(data);
+  if (existe) {
+    return res.status(400).json({ erreur: "Licence déjà existante" });
+  }
+
+  licence.actif = true;
+
+  licences.push(licence);
+  sauvegarderLicences(licences);
 
   logServeur("Licence créée: " + licence.cle);
 
-  res.json({ success: true, cle: licence.cle, licence });
+  res.json({ succes: true, licence });
 
 });
 
@@ -157,11 +114,12 @@ DELETE LICENCE
 app.delete("/licences/:cle", (req, res) => {
 
   const cle = req.params.cle;
-  const data = chargerData();
 
-  data.actives = data.actives.filter(l => l.cle !== cle);
+  let licences = chargerLicences();
 
-  sauvegarderData(data);
+  licences = licences.filter(l => l.cle !== cle);
+
+  sauvegarderLicences(licences);
 
   logServeur("Licence supprimée: " + cle);
 
@@ -175,22 +133,22 @@ TOGGLE ACTIF
 
 app.post("/toggle-licence", (req, res) => {
 
-  const data = chargerData();
+  let licences = chargerLicences();
   const { cle } = req.body;
 
-  const index = data.actives.findIndex(l => l.cle === cle);
+  const index = licences.findIndex(l => l.cle === cle);
 
   if (index === -1) {
     return res.json({ ok: false });
   }
 
-  data.actives[index].actif = !data.actives[index].actif;
+  licences[index].actif = !licences[index].actif;
 
-  sauvegarderData(data);
+  sauvegarderLicences(licences);
 
   res.json({
     ok: true,
-    actif: data.actives[index].actif
+    actif: licences[index].actif
   });
 
 });
@@ -207,22 +165,25 @@ app.post("/validate", (req, res) => {
     return res.json({ status: "invalid" });
   }
 
-  const data = chargerData();
-  const licence = data.actives.find(l => l.cle === licenseKey);
+  const licences = chargerLicences();
+
+  const licence = licences.find(l => l.cle === licenseKey);
 
   if (!licence) {
     return res.json({ status: "invalid" });
   }
 
+  // Désactivée
   if (licence.actif === false) {
     return res.json({ status: "disabled" });
   }
 
-  if (licence.dateExpiration) {
+  // Expiration
+  if (licence.expiration) {
     const today = new Date();
-    const expiration = new Date(licence.dateExpiration);
+    const expiration = new Date(licence.expiration);
 
-    if (!Number.isNaN(expiration.getTime()) && expiration < today) {
+    if (expiration < today) {
       return res.json({ status: "expired" });
     }
   }
@@ -241,9 +202,9 @@ VERIFIER ACCES (OPTION API)
 app.post("/verifier-acces", (req, res) => {
 
   const { cle } = req.body;
-  const data = chargerData();
+  const licences = chargerLicences();
 
-  const licence = data.actives.find(l => l.cle === cle);
+  const licence = licences.find(l => l.cle === cle);
 
   if (!licence) {
     return res.json({ autorise: false });
@@ -253,25 +214,6 @@ app.post("/verifier-acces", (req, res) => {
     autorise: licence.actif !== false,
     licence
   });
-
-});
-
-/* ======================================================
-GET LICENCE PAR EMAIL
-====================================================== */
-
-app.get("/licence/:email", (req, res) => {
-
-  const email = req.params.email;
-  const data = chargerData();
-
-  const licence = data.actives.find(l => l.email === email);
-
-  if (!licence) {
-    return res.status(404).json({ error: "Licence introuvable" });
-  }
-
-  res.json({ cle: licence.cle });
 
 });
 
