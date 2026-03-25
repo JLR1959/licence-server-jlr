@@ -1,16 +1,15 @@
 /* ======================================================
-SERVEUR LICENCE JLR — VERSION STABLE COMPATIBLE FRONT
+SERVEUR LICENCE JLR — VERSION FINALE STRIPE + EMAIL
 ====================================================== */
 
 const express = require("express");
 const cors = require("cors");
 const fs = require("fs");
 const path = require("path");
+const Stripe = require("stripe");
+const nodemailer = require("nodemailer");
 
 const app = express();
-
-app.use(cors());
-app.use(express.json());
 
 /* ======================================================
 CONFIG
@@ -18,253 +17,133 @@ CONFIG
 
 const DATA_FILE = path.join(__dirname, "licences.json");
 
+const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+/* ======================================================
+EMAIL CONFIG
+====================================================== */
+
+const transporter = nodemailer.createTransport({
+  host: "smtp.office365.com",
+  port: 587,
+  secure: false,
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
+  }
+});
+
+async function envoyerEmail(email, cle){
+  await transporter.sendMail({
+    from: process.env.EMAIL_USER,
+    to: email,
+    subject: "Votre licence VPIJLR",
+    text: `Votre clé licence : ${cle}`
+  });
+}
+
 /* ======================================================
 UTILS
 ====================================================== */
 
-function logServeur(msg){
-  console.log(new Date().toISOString(), "-", msg);
-}
-
-function genererCleLicence() {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-
-  function bloc() {
-    let r = "";
-    for (let i = 0; i < 6; i++) {
-      r += chars[Math.floor(Math.random() * chars.length)];
-    }
-    return r;
-  }
-
-  return [
-    bloc(), bloc(), bloc(),
-    bloc(), bloc(), bloc(),
-    bloc()
-  ].join("-");
-}
-
-function normaliserStructure(data) {
-  if (Array.isArray(data)) return { actives: data };
-  if (data && Array.isArray(data.actives)) return data;
-  return { actives: [] };
-}
-
-function chargerData() {
-  try {
-    if (!fs.existsSync(DATA_FILE)) return { actives: [] };
-    return normaliserStructure(JSON.parse(fs.readFileSync(DATA_FILE, "utf8")));
-  } catch {
+function chargerData(){
+  try{
+    if(!fs.existsSync(DATA_FILE)) return { actives: [] };
+    return JSON.parse(fs.readFileSync(DATA_FILE,"utf8"));
+  }catch{
     return { actives: [] };
   }
 }
 
-function sauvegarderData(data) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(normaliserStructure(data), null, 2), "utf8");
+function sauvegarderData(data){
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data,null,2));
+}
+
+function genererCle(){
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  const bloc = () => Array.from({length:6},()=>chars[Math.floor(Math.random()*chars.length)]).join("");
+  return [bloc(),bloc(),bloc(),bloc(),bloc(),bloc(),bloc()].join("-");
 }
 
 /* ======================================================
 PING
 ====================================================== */
 
-app.get("/ping", (req, res) => {
-  res.send("pong");
-});
+app.get("/ping",(req,res)=>res.send("pong"));
 
 /* ======================================================
-ACCUEIL
+WEBHOOK STRIPE
 ====================================================== */
 
-app.get("/", (req, res) => {
-  res.send("SERVEUR LICENCE JLR ACTIF");
-});
+app.post("/webhook-stripe",
+  express.raw({type:"application/json"}),
+  async (req,res)=>{
 
-/* ======================================================
-API STATUS
-====================================================== */
+    const sig = req.headers["stripe-signature"];
 
-app.get("/api", (req, res) => {
-  const data = chargerData();
+    let event;
 
-  res.json({
-    status: "OK",
-    total: data.actives.length,
-    date: new Date()
-  });
-});
-
-/* ======================================================
-GET LICENCES
-====================================================== */
-
-app.get("/licences", (req, res) => {
-  const data = chargerData();
-  res.json(data);
-});
-
-/* ======================================================
-POST LICENCE (CREATE)
-====================================================== */
-
-app.post("/licences", (req, res) => {
-
-  const data = chargerData();
-  const { client, email, emailClient, type, dateActivation, dateExpiration } = req.body;
-
-  const cle = genererCleLicence();
-
-  const collision = data.actives.find(l => l.cle === cle);
-
-  if (collision) {
-    return res.status(400).json({ erreur: "Collision licence, recommencez" });
-  }
-
-  const licence = {
-    cle,
-    client: client || "Client",
-    email: email || emailClient || "",
-    type: type || "achat_1",
-    dateActivation: dateActivation || new Date().toISOString().split("T")[0],
-    dateExpiration: dateExpiration || "",
-    actif: true
-  };
-
-  data.actives.push(licence);
-  sauvegarderData(data);
-
-  logServeur("Licence créée: " + licence.cle);
-
-  res.json({
-    success: true,
-    cle: licence.cle,
-    licence
-  });
-
-});
-
-/* ======================================================
-DELETE LICENCE
-====================================================== */
-
-app.delete("/licences/:cle", (req, res) => {
-
-  const cle = req.params.cle;
-  const data = chargerData();
-
-  data.actives = data.actives.filter(l => l.cle !== cle);
-
-  sauvegarderData(data);
-
-  logServeur("Licence supprimée: " + cle);
-
-  res.json({ succes: true });
-
-});
-
-/* ======================================================
-TOGGLE ACTIF
-====================================================== */
-
-app.post("/toggle-licence", (req, res) => {
-
-  const data = chargerData();
-  const { cle } = req.body;
-
-  const index = data.actives.findIndex(l => l.cle === cle);
-
-  if (index === -1) {
-    return res.json({ ok: false });
-  }
-
-  data.actives[index].actif = !data.actives[index].actif;
-
-  sauvegarderData(data);
-
-  res.json({
-    ok: true,
-    actif: data.actives[index].actif
-  });
-
-});
-
-/* ======================================================
-VALIDATION LICENCE
-====================================================== */
-
-app.post("/validate", (req, res) => {
-
-  const { licenseKey } = req.body;
-
-  if (!licenseKey) {
-    return res.json({ status: "invalid" });
-  }
-
-  const data = chargerData();
-  const licence = data.actives.find(l => l.cle === licenseKey);
-
-  if (!licence) {
-    return res.json({ status: "invalid" });
-  }
-
-  if (licence.actif === false) {
-    return res.json({ status: "disabled" });
-  }
-
-  if (licence.dateExpiration) {
-    const today = new Date();
-    const expiration = new Date(licence.dateExpiration);
-
-    if (!Number.isNaN(expiration.getTime()) && expiration < today) {
-      return res.json({ status: "expired" });
+    try{
+      event = stripe.webhooks.constructEvent(req.body,sig,endpointSecret);
+    }catch(err){
+      return res.status(400).send("Webhook Error");
     }
-  }
 
-  res.json({
-    status: "valid",
-    licence
-  });
+    if(event.type === "checkout.session.completed"){
 
+      const session = event.data.object;
+
+      const email = session.customer_details?.email;
+
+      if(!email) return res.json({received:true});
+
+      const data = chargerData();
+
+      const cle = genererCle();
+
+      data.actives.push({
+        cle,
+        email,
+        actif:true,
+        date:new Date().toISOString()
+      });
+
+      sauvegarderData(data);
+
+      try{
+        await envoyerEmail(email, cle);
+        console.log("EMAIL OK :", email);
+      }catch(e){
+        console.log("EMAIL ERROR :", e.message);
+      }
+
+    }
+
+    res.json({received:true});
 });
 
 /* ======================================================
-VERIFIER ACCES
+JSON
 ====================================================== */
 
-app.post("/verifier-acces", (req, res) => {
-
-  const { cle } = req.body;
-  const data = chargerData();
-
-  const licence = data.actives.find(l => l.cle === cle);
-
-  if (!licence) {
-    return res.json({ autorise: false });
-  }
-
-  res.json({
-    autorise: licence.actif !== false,
-    licence
-  });
-
-});
+app.use(express.json());
 
 /* ======================================================
-GET LICENCE PAR EMAIL
+GET LICENCE
 ====================================================== */
 
-app.get("/licence/:email", (req, res) => {
+app.get("/licence/:email",(req,res)=>{
 
-  const email = req.params.email;
   const data = chargerData();
 
-  const licence = data.actives.find(l => l.email === email);
+  const licence = data.actives.find(l=>l.email===req.params.email);
 
-  if (!licence) {
-    return res.status(404).json({ error: "Licence introuvable" });
+  if(!licence){
+    return res.status(404).json({error:"Licence introuvable"});
   }
 
-  res.json({ cle: licence.cle });
-
+  res.json({cle:licence.cle});
 });
 
 /* ======================================================
@@ -273,6 +152,6 @@ PORT
 
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
-  logServeur("SERVEUR LICENCE JLR ACTIF sur port " + PORT);
+app.listen(PORT,()=>{
+  console.log("SERVER RUNNING PORT",PORT);
 });
