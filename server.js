@@ -1,6 +1,6 @@
 
 /* ======================================================
-SERVEUR LICENCE JLR — FINAL COMPLET (RESEND + STRIPE)
+SERVEUR LICENCE JLR — FINAL CHECKOUT API
 ====================================================== */
 
 const express = require("express");
@@ -21,7 +21,7 @@ ROOT
 ====================================================== */
 
 app.get("/", (req,res)=>{
-  res.send("SERVEUR FINAL OK");
+  res.send("SERVEUR CHECKOUT OK");
 });
 
 /* ======================================================
@@ -40,14 +40,13 @@ try{
 }
 
 /* ======================================================
-EMAIL RESEND
+EMAIL (RESEND)
 ====================================================== */
 
 async function envoyerEmail(email, cle){
 
   try{
-
-    const response = await fetch("https://api.resend.com/emails", {
+    await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${process.env.RESEND_API_KEY}`,
@@ -57,18 +56,12 @@ async function envoyerEmail(email, cle){
         from: `VPIJLR <${process.env.EMAIL_USER}>`,
         to: email,
         subject: "Votre licence VPIJLR",
-        html: `
-          <p>Bonjour,</p>
-          <p>Voici votre clé licence :</p>
-          <h2>${cle}</h2>
-        `
+        html: `<h2>${cle}</h2>`
       })
     });
-
-    console.log("📧 EMAIL:", await response.text());
-
+    console.log("📧 Email envoyé :", email);
   }catch(e){
-    console.log("❌ EMAIL ERROR:", e.message);
+    console.log("❌ Email error:", e.message);
   }
 }
 
@@ -101,67 +94,10 @@ function genererCle(){
 }
 
 /* ======================================================
-PING
-====================================================== */
-
-app.get("/ping",(req,res)=>res.send("pong"));
-
-/* ======================================================
-LICENCES
-====================================================== */
-
-app.get("/licences",(req,res)=>{
-  res.json(load().actives);
-});
-
-app.post("/licences",(req,res)=>{
-
-  const { email } = req.body;
-
-  if(!email){
-    return res.status(400).json({error:"Email requis"});
-  }
-
-  const data = load();
-
-  const cle = genererCle();
-
-  data.actives.push({
-    cle,
-    email,
-    actif:true,
-    date:new Date().toISOString()
-  });
-
-  save(data);
-
-  envoyerEmail(email, cle);
-
-  res.json({cle});
-});
-
-app.get("/licence/:email",(req,res)=>{
-
-  const data = load();
-
-  const licence = data.actives.find(l=>l.email===req.params.email);
-
-  if(!licence){
-    return res.status(404).json({error:"Licence introuvable"});
-  }
-
-  res.json({cle:licence.cle});
-});
-
-/* ======================================================
 CREATE CHECKOUT SESSION
 ====================================================== */
 
 app.post("/create-checkout-session", async (req,res)=>{
-
-  if(!stripe){
-    return res.status(500).json({error:"Stripe non configuré"});
-  }
 
   const { email } = req.body;
 
@@ -196,7 +132,7 @@ app.post("/create-checkout-session", async (req,res)=>{
     res.json({url:session.url});
 
   }catch(e){
-    console.log("❌ Stripe error:", e.message);
+    console.log("❌ Stripe:", e.message);
     res.status(500).json({error:e.message});
   }
 
@@ -210,10 +146,6 @@ app.post("/webhook-stripe",
   express.raw({type:"application/json"}),
   async (req,res)=>{
 
-    if(!stripe){
-      return res.json({received:true});
-    }
-
     let event;
 
     try{
@@ -223,83 +155,66 @@ app.post("/webhook-stripe",
         process.env.STRIPE_WEBHOOK_SECRET
       );
     }catch(err){
-      console.log("❌ Webhook error:", err.message);
       return res.status(400).send("Webhook Error");
     }
 
     if(event.type === "checkout.session.completed"){
 
       const session = event.data.object;
+      const email = session.customer_email;
 
-      const email =
-        session.customer_details?.email ||
-        session.customer_email;
+      const data = load();
 
-      if(email){
+      const cle = genererCle();
 
-        const data = load();
+      data.actives.push({
+        cle,
+        email,
+        actif:true,
+        date:new Date().toISOString()
+      });
 
-        const cle = genererCle();
+      save(data);
 
-        data.actives.push({
-          cle,
-          email,
-          actif:true,
-          date:new Date().toISOString()
-        });
-
-        save(data);
-
-        envoyerEmail(email, cle);
-      }
+      envoyerEmail(email, cle);
     }
 
     res.json({received:true});
 });
 
 /* ======================================================
-SESSION STRIPE (FIX FINAL)
+SESSION
 ====================================================== */
 
 app.get("/session/:id", async (req,res)=>{
-
-  if(!stripe){
-    return res.status(500).json({error:"Stripe non configuré"});
-  }
 
   try{
 
     const session = await stripe.checkout.sessions.retrieve(req.params.id);
 
-    const email =
-      session.customer_details?.email ||
-      session.customer_email;
+    res.json({ email: session.customer_email });
 
-    if(!email){
-      return res.status(404).json({error:"Email introuvable"});
-    }
-
-    res.json({ email });
-
-  }catch(e){
-    console.log("❌ SESSION ERROR:", e.message);
+  }catch{
     res.status(500).json({error:"Session invalide"});
   }
 
 });
 
 /* ======================================================
-TEST EMAIL
+LICENCE
 ====================================================== */
 
-app.get("/test-email", async (req,res)=>{
+app.get("/licence/:email",(req,res)=>{
 
-  await envoyerEmail(
-    process.env.EMAIL_USER,
-    "AAAAAA-BBBBBB-CCCCCC-DDDDDD-EEEEEE-FFFFFF-GGGGGG"
-  );
+  const data = load();
 
-  res.send("EMAIL TEST ENVOYÉ");
+  const licence = data.actives.find(l=>l.email===req.params.email);
+
+  if(!licence){
+    return res.status(404).json({error:"Licence introuvable"});
+  }
+
+  res.json({cle:licence.cle});
 });
 
 /* ======================================================
@@ -309,5 +224,5 @@ START
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT,()=>{
-  console.log("🚀 SERVEUR FINAL COMPLET");
+  console.log("🚀 SERVEUR FINAL CHECKOUT");
 });
