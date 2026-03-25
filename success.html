@@ -5,21 +5,32 @@
 <title>Paiement réussi</title>
 </head>
 
-<body style="background:#0b1220;color:white;text-align:center;padding-top:80px;">
+<body style="background:#0b1220;color:white;text-align:center;padding-top:60px;font-family:Arial;">
+
+<!-- ======================================================
+MODULE 01 — LOGO
+====================================================== -->
+
+<img src="logo_jlr.png" style="width:140px;border-radius:50%;margin-bottom:20px;">
+
+<!-- ======================================================
+MODULE 02 — TITRE
+====================================================== -->
 
 <h1 style="color:#22c55e;">Paiement réussi ✅</h1>
-<p id="status">Activation licence...</p>
+
+<p id="status" style="margin-top:20px;">Activation licence...</p>
 
 <script>
 
 /* ======================================================
-MODULE 01 — CONFIG
+MODULE 03 — CONFIG
 ====================================================== */
 
 const API = "https://licence-server-jlr-0jex.onrender.com";
 
 /* ======================================================
-MODULE 02 — EMAIL
+MODULE 04 — EMAIL
 ====================================================== */
 
 function getEmail(){
@@ -28,7 +39,7 @@ function getEmail(){
 }
 
 /* ======================================================
-MODULE 03 — ACTIVATION
+MODULE 05 — ACTIVATION
 ====================================================== */
 
 async function activer(){
@@ -56,15 +67,11 @@ async function activer(){
     document.getElementById("status").innerText =
       "Licence activée ✔\n" + data.cle;
 
-    console.log("LICENCE :", data.cle);
-
     setTimeout(()=>{
       window.location.href = "https://vpijlr-logiciel-client-meg5.onrender.com/";
     },2000);
 
   }catch(e){
-
-    console.error(e);
 
     document.getElementById("status").innerText =
       "❌ " + e.message;
@@ -74,7 +81,7 @@ async function activer(){
 }
 
 /* ======================================================
-MODULE 04 — START
+MODULE 06 — START
 ====================================================== */
 
 window.onload = activer;
