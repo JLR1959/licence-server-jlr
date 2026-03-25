@@ -1,3 +1,4 @@
+
 /* ======================================================
 SERVEUR LICENCE JLR — FINAL STABLE (EMAIL PRIORITÉ)
 ====================================================== */
@@ -20,7 +21,15 @@ app.use(cors());
 const DATA_FILE = path.join(__dirname, "licences.json");
 
 /* ======================================================
-MODULE 01 — STRIPE (SAFE LOAD)
+MODULE 01 — ROOT (FIX CRITIQUE)
+====================================================== */
+
+app.get("/", (req,res)=>{
+  res.send("SERVEUR LICENCE JLR OK");
+});
+
+/* ======================================================
+MODULE 02 — STRIPE (SAFE LOAD)
 ====================================================== */
 
 let stripe = null;
@@ -37,7 +46,7 @@ try{
 }
 
 /* ======================================================
-MODULE 02 — EMAIL (GMAIL STABLE)
+MODULE 03 — EMAIL (GMAIL STABLE)
 ====================================================== */
 
 let transporter = null;
@@ -80,7 +89,7 @@ Merci de votre confiance.`
 }
 
 /* ======================================================
-MODULE 03 — DATA
+MODULE 04 — DATA
 ====================================================== */
 
 function load(){
@@ -97,7 +106,7 @@ function save(data){
 }
 
 /* ======================================================
-MODULE 04 — GENERATION CLE
+MODULE 05 — GENERATION CLE
 ====================================================== */
 
 function genererCle(){
@@ -110,19 +119,19 @@ function genererCle(){
 }
 
 /* ======================================================
-MODULE 05 — PING
+MODULE 06 — PING
 ====================================================== */
 
 app.get("/ping",(req,res)=>res.send("pong"));
 
 /* ======================================================
-MODULE 06 — JSON NORMAL
+MODULE 07 — JSON NORMAL
 ====================================================== */
 
 app.use(express.json());
 
 /* ======================================================
-MODULE 07 — GET ALL LICENCES
+MODULE 08 — GET ALL LICENCES
 ====================================================== */
 
 app.get("/licences",(req,res)=>{
@@ -131,7 +140,7 @@ app.get("/licences",(req,res)=>{
 });
 
 /* ======================================================
-MODULE 08 — CREATE LICENCE (MANUEL)
+MODULE 09 — CREATE LICENCE (MANUEL)
 ====================================================== */
 
 app.post("/licences",(req,res)=>{
@@ -157,14 +166,13 @@ app.post("/licences",(req,res)=>{
 
   save(data);
 
-  // envoi email direct
   envoyerEmail(email, cle);
 
   res.json(licence);
 });
 
 /* ======================================================
-MODULE 09 — GET LICENCE PAR EMAIL
+MODULE 10 — GET LICENCE PAR EMAIL
 ====================================================== */
 
 app.get("/licence/:email",(req,res)=>{
@@ -181,7 +189,7 @@ app.get("/licence/:email",(req,res)=>{
 });
 
 /* ======================================================
-MODULE 10 — CREATE CHECKOUT SESSION
+MODULE 11 — CREATE CHECKOUT SESSION
 ====================================================== */
 
 app.post("/create-checkout-session", async (req,res)=>{
@@ -230,7 +238,7 @@ app.post("/create-checkout-session", async (req,res)=>{
 });
 
 /* ======================================================
-MODULE 11 — WEBHOOK STRIPE (EMAIL AUTO)
+MODULE 12 — WEBHOOK STRIPE
 ====================================================== */
 
 app.post("/webhook-stripe",
@@ -294,7 +302,7 @@ app.post("/webhook-stripe",
 });
 
 /* ======================================================
-MODULE 12 — TEST EMAIL
+MODULE 13 — TEST EMAIL
 ====================================================== */
 
 app.get("/test-email", async (req,res)=>{
@@ -312,7 +320,7 @@ app.get("/test-email", async (req,res)=>{
 });
 
 /* ======================================================
-MODULE 13 — START
+MODULE 14 — START
 ====================================================== */
 
 const PORT = process.env.PORT || 3000;
