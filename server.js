@@ -2,25 +2,24 @@
 // MODULE 01 - SETUP
 // ==============================
 import express from "express";
-import Stripe from "stripe";
 import { Resend } from "resend";
 
 const app = express();
 app.use(express.json());
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 // ==============================
-// MODULE 02 - MEMORY
+// MODULE 02 - DATABASE (TEMP)
 // ==============================
-const cache = new Map();
+const users = new Map();
 
 // ==============================
 // MODULE 03 - LICENCE
 // ==============================
 function generateLicense() {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+
   const block = () =>
     Array.from({ length: 6 }, () =>
       chars[Math.floor(Math.random() * chars.length)]
@@ -36,61 +35,67 @@ async function sendMail(email, licence) {
   await resend.emails.send({
     from: "activation@ton-app.com",
     to: email,
-    subject: "Activation SaaS",
+    subject: "Accès activé",
     html: `
-      <h2>Licence activée</h2>
-      <p><b>${licence}</b></p>
-      <p>VPIJLR 2026 activé</p>
-      <a href="https://ton-app.com/login">Accéder</a>
+      <h2>Accès activé</h2>
+      <p>Licence :</p>
+      <h3>${licence}</h3>
+      <p>Statut : VPIJLR 2026 activé</p>
+      <a href="https://ton-app.com">Accéder au logiciel</a>
     `,
   });
 }
 
 // ==============================
-// MODULE 05 - CREATE CHECKOUT
+// MODULE 05 - ACTIVATE USER
 // ==============================
-app.post("/create-checkout", async (req, res) => {
-  const session = await stripe.checkout.sessions.create({
-    payment_method_types: ["card"],
-    mode: "payment",
+app.get("/activate", async (req, res) => {
 
-    line_items: [
-      {
-        price: "price_xxx", // ← MET TON VRAI PRICE ID
-        quantity: 1,
-      },
-    ],
+  const email = req.query.email;
 
-    success_url:
-      "https://jlr1959.github.io/licence-manager-ui/success.html?session_id={CHECKOUT_SESSION_ID}",
-
-    cancel_url:
-      "https://jlr1959.github.io/licence-manager-ui/cancel.html",
-  });
-
-  res.json({ url: session.url });
-});
-
-// ==============================
-// MODULE 06 - ACTIVATE
-// ==============================
-app.get("/activate/:id", async (req, res) => {
-  const id = req.params.id;
-
-  if (cache.has(id)) {
-    return res.json({ licence: cache.get(id) });
+  if (!email) {
+    return res.status(400).json({ error: "email manquant" });
   }
 
-  const session = await stripe.checkout.sessions.retrieve(id);
-  const email = session.customer_details?.email;
+  // déjà activé
+  if (users.has(email)) {
+    return res.json(users.get(email));
+  }
 
   const licence = generateLicense();
 
-  cache.set(id, licence);
+  const user = {
+    email,
+    licence,
+    active: true,
+    status: "VPIJLR 2026 activé"
+  };
+
+  users.set(email, user);
 
   sendMail(email, licence);
 
-  res.json({ licence });
+  return res.json(user);
+});
+
+// ==============================
+// MODULE 06 - CHECK ACCESS (SaaS)
+// ==============================
+app.post("/check-access", (req, res) => {
+
+  const { email } = req.body;
+
+  const user = users.get(email);
+
+  if (!user || !user.active) {
+    return res.status(403).json({ error: "Accès refusé" });
+  }
+
+  return res.json({
+    success: true,
+    licence: user.licence,
+    status: user.status
+  });
 });
 
 // ==============================
