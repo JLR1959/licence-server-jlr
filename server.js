@@ -120,12 +120,16 @@ app.post("/webhook-stripe",
     if(event.type === "checkout.session.completed"){
 
       const session = event.data.object;
-      const email = session.customer_details?.email;
+
+      const email =
+        session.customer_details?.email ||
+        session.customer_email ||
+        null;
 
       console.log("💰 PAIEMENT REÇU :", email);
 
       if(!email){
-        console.log("❌ EMAIL MANQUANT");
+        console.log("❌ EMAIL MANQUANT DANS SESSION");
         return res.json({received:true});
       }
 
@@ -201,18 +205,8 @@ app.get("/test-email", async (req,res)=>{
 });
 
 /* ======================================================
-MODULE 11 — START
+MODULE 11 — GET SESSION STRIPE (ROBUSTE)
 ====================================================== */
-
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT,()=>{
-  console.log("🚀 SERVEUR ACTIF PORT",PORT);
-});
-
-// ======================================================
-// MODULE 12 — GET SESSION STRIPE
-// ======================================================
 
 app.get("/session/:id", async (req,res)=>{
 
@@ -220,14 +214,33 @@ app.get("/session/:id", async (req,res)=>{
 
     const session = await stripe.checkout.sessions.retrieve(req.params.id);
 
-    res.json({
-      email: session.customer_details.email
-    });
+    let email =
+      session.customer_details?.email ||
+      session.customer_email ||
+      null;
+
+    if(!email){
+      console.log("❌ EMAIL INTROUVABLE SESSION");
+      return res.status(404).json({error:"Email introuvable"});
+    }
+
+    res.json({ email });
 
   }catch(e){
 
+    console.log("❌ SESSION ERROR :", e.message);
     res.status(500).json({error:"Session Stripe invalide"});
 
   }
 
+});
+
+/* ======================================================
+MODULE 12 — START
+====================================================== */
+
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT,()=>{
+  console.log("🚀 SERVEUR ACTIF PORT",PORT);
 });
