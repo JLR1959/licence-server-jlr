@@ -12,46 +12,51 @@
 
 <script>
 
+/* ======================================================
+MODULE 01 — CONFIG
+====================================================== */
+
+const API = "https://licence-server-jlr-0jex.onrender.com";
+
+/* ======================================================
+MODULE 02 — EMAIL
+====================================================== */
+
+function getEmail(){
+  const params = new URLSearchParams(window.location.search);
+  return params.get("email");
+}
+
+/* ======================================================
+MODULE 03 — ACTIVATION
+====================================================== */
+
 async function activer(){
+
+  const email = getEmail();
+
+  if(!email){
+    document.getElementById("status").innerText =
+      "❌ Email manquant";
+    return;
+  }
 
   try{
 
-    // ======================================================
-    // MODULE 01 — ACTIVATION DIRECTE
-    // ======================================================
+    const res = await fetch(API + "/licence/" + email);
 
-    const activation = await fetch("https://licence-server-jlr-0jex.onrender.com/activate-licence", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({})
-    });
-
-    if(!activation.ok){
-      throw new Error("Serveur licence indisponible");
+    if(!res.ok){
+      throw new Error("Licence introuvable");
     }
 
-    const data = await activation.json();
+    const data = await res.json();
 
-    if(!data.licenceKey){
-      throw new Error("Licence non générée");
-    }
-
-    // ======================================================
-    // MODULE 02 — STOCKAGE
-    // ======================================================
-
-    localStorage.setItem("licence_key", data.licenceKey);
+    localStorage.setItem("licence_key", data.cle);
 
     document.getElementById("status").innerText =
-      "Licence activée ✔\n" + data.licenceKey;
+      "Licence activée ✔\n" + data.cle;
 
-    console.log("LICENCE :", data.licenceKey);
-
-    // ======================================================
-    // MODULE 03 — REDIRECTION
-    // ======================================================
+    console.log("LICENCE :", data.cle);
 
     setTimeout(()=>{
       window.location.href = "https://vpijlr-logiciel-client-meg5.onrender.com/";
@@ -62,13 +67,17 @@ async function activer(){
     console.error(e);
 
     document.getElementById("status").innerText =
-      "❌ ERREUR : " + e.message;
+      "❌ " + e.message;
 
   }
 
 }
 
-activer();
+/* ======================================================
+MODULE 04 — START
+====================================================== */
+
+window.onload = activer;
 
 </script>
 
