@@ -1,57 +1,76 @@
-/* ======================================================
-MODULE — RECUP SESSION ID
-====================================================== */
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Paiement réussi</title>
+</head>
 
-function getSessionId(){
-  const params = new URLSearchParams(window.location.search);
-  return params.get("session_id");
-}
+<body style="background:#0b1220;color:white;text-align:center;padding-top:80px;">
 
-/* ======================================================
-MODULE — ACTIVATION
-====================================================== */
+<h1 style="color:#22c55e;">Paiement réussi ✅</h1>
+<p id="status">Activation licence...</p>
+
+<script>
 
 async function activer(){
 
-  const sessionId = getSessionId();
-
-  if(!sessionId){
-    document.getElementById("status").innerText =
-      "❌ Session Stripe manquante";
-    return;
-  }
-
   try{
 
-    // 1. récupérer email via serveur
-    const resSession = await fetch(API + "/session/" + sessionId);
-    const sessionData = await resSession.json();
+    // ======================================================
+    // MODULE 01 — ACTIVATION DIRECTE
+    // ======================================================
 
-    const email = sessionData.email;
+    const activation = await fetch("https://licence-server-jlr-0jex.onrender.com/activate-licence", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({})
+    });
 
-    if(!email){
-      throw new Error("Email introuvable");
+    if(!activation.ok){
+      throw new Error("Serveur licence indisponible");
     }
 
-    // 2. récupérer licence
-    const res = await fetch(API + "/licence/" + email);
+    const data = await activation.json();
 
-    if(!res.ok){
-      throw new Error("Licence introuvable");
+    if(!data.licenceKey){
+      throw new Error("Licence non générée");
     }
 
-    const data = await res.json();
+    // ======================================================
+    // MODULE 02 — STOCKAGE
+    // ======================================================
 
-    localStorage.setItem("licence_key", data.cle);
+    localStorage.setItem("licence_key", data.licenceKey);
 
     document.getElementById("status").innerText =
-      "Licence activée ✔\n" + data.cle;
+      "Licence activée ✔\n" + data.licenceKey;
+
+    console.log("LICENCE :", data.licenceKey);
+
+    // ======================================================
+    // MODULE 03 — REDIRECTION
+    // ======================================================
+
+    setTimeout(()=>{
+      window.location.href = "https://vpijlr-logiciel-client-meg5.onrender.com/";
+    },2000);
 
   }catch(e){
 
+    console.error(e);
+
     document.getElementById("status").innerText =
-      "❌ " + e.message;
+      "❌ ERREUR : " + e.message;
 
   }
 
 }
+
+activer();
+
+</script>
+
+</body>
+</html>
