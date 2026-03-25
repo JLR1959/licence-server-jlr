@@ -1,4 +1,3 @@
-console.log("VERSION TEST EMAIL OK");
 /* ======================================================
 SERVEUR LICENCE JLR — VERSION COMPLETE COMPATIBLE FRONT
 ====================================================== */
