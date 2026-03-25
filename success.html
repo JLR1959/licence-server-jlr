@@ -1,59 +1,39 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-<meta charset="UTF-8">
-<title>Paiement réussi</title>
-</head>
-
-<body style="background:#0b1220;color:white;text-align:center;padding-top:60px;font-family:Arial;">
-
-<!-- ======================================================
-MODULE 01 — LOGO
-====================================================== -->
-
-<img src="logo_jlr.png" style="width:140px;border-radius:50%;margin-bottom:20px;">
-
-<!-- ======================================================
-MODULE 02 — TITRE
-====================================================== -->
-
-<h1 style="color:#22c55e;">Paiement réussi ✅</h1>
-
-<p id="status" style="margin-top:20px;">Activation licence...</p>
-
-<script>
-
 /* ======================================================
-MODULE 03 — CONFIG
+MODULE — RECUP SESSION ID
 ====================================================== */
 
-const API = "https://licence-server-jlr-0jex.onrender.com";
-
-/* ======================================================
-MODULE 04 — EMAIL
-====================================================== */
-
-function getEmail(){
+function getSessionId(){
   const params = new URLSearchParams(window.location.search);
-  return params.get("email");
+  return params.get("session_id");
 }
 
 /* ======================================================
-MODULE 05 — ACTIVATION
+MODULE — ACTIVATION
 ====================================================== */
 
 async function activer(){
 
-  const email = getEmail();
+  const sessionId = getSessionId();
 
-  if(!email){
+  if(!sessionId){
     document.getElementById("status").innerText =
-      "❌ Email manquant";
+      "❌ Session Stripe manquante";
     return;
   }
 
   try{
 
+    // 1. récupérer email via serveur
+    const resSession = await fetch(API + "/session/" + sessionId);
+    const sessionData = await resSession.json();
+
+    const email = sessionData.email;
+
+    if(!email){
+      throw new Error("Email introuvable");
+    }
+
+    // 2. récupérer licence
     const res = await fetch(API + "/licence/" + email);
 
     if(!res.ok){
@@ -67,10 +47,6 @@ async function activer(){
     document.getElementById("status").innerText =
       "Licence activée ✔\n" + data.cle;
 
-    setTimeout(()=>{
-      window.location.href = "https://vpijlr-logiciel-client-meg5.onrender.com/";
-    },2000);
-
   }catch(e){
 
     document.getElementById("status").innerText =
@@ -79,14 +55,3 @@ async function activer(){
   }
 
 }
-
-/* ======================================================
-MODULE 06 — START
-====================================================== */
-
-window.onload = activer;
-
-</script>
-
-</body>
-</html>

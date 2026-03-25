@@ -209,3 +209,25 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT,()=>{
   console.log("🚀 SERVEUR ACTIF PORT",PORT);
 });
+
+// ======================================================
+// MODULE 12 — GET SESSION STRIPE
+// ======================================================
+
+app.get("/session/:id", async (req,res)=>{
+
+  try{
+
+    const session = await stripe.checkout.sessions.retrieve(req.params.id);
+
+    res.json({
+      email: session.customer_details.email
+    });
+
+  }catch(e){
+
+    res.status(500).json({error:"Session Stripe invalide"});
+
+  }
+
+});
