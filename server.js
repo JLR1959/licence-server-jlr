@@ -1,31 +1,16 @@
 // ==============================
-// MODULE 01 - SETUP
-// ==============================
 import express from "express";
 import Stripe from "stripe";
-import { Resend } from "resend";
 import fs from "fs";
 import crypto from "crypto";
 
 const app = express();
 
 // ==============================
-// MODULE 02 - ENV
-// ==============================
-function requireEnv(name){
-  const v = process.env[name];
-  if(!v){
-    console.error("Missing:", name);
-    process.exit(1);
-  }
-  return v;
-}
-
-const STRIPE_SECRET_KEY = requireEnv("STRIPE_SECRET_KEY");
-const STRIPE_WEBHOOK_SECRET = requireEnv("STRIPE_WEBHOOK_SECRET");
-const RESEND_API_KEY = requireEnv("RESEND_API_KEY");
-const ADMIN_KEY = requireEnv("ADMIN_KEY");
-const LICENCE_SECRET = requireEnv("LICENCE_SECRET");
+const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
+const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
+const ADMIN_KEY = process.env.ADMIN_KEY;
+const LICENCE_SECRET = process.env.LICENCE_SECRET;
 
 // ==============================
 app.use("/webhook", express.raw({ type: "application/json" }));
@@ -33,24 +18,12 @@ app.use(express.json());
 
 // ==============================
 const stripe = new Stripe(STRIPE_SECRET_KEY);
-const resend = new Resend(RESEND_API_KEY);
 
-// ==============================
-app.use((req,res,next)=>{
-  res.setHeader("Access-Control-Allow-Origin","*");
-  res.setHeader("Access-Control-Allow-Headers","*");
-  next();
-});
-
-// ==============================
-// ROOT
 // ==============================
 app.get("/", (req,res)=>{
-  res.send("✅ SERVER OK");
+  res.send("SERVER OK");
 });
 
-// ==============================
-// DB
 // ==============================
 const FILE="./licences.json";
 
@@ -70,18 +43,6 @@ function save(){
 }
 
 const users=load();
-
-// ==============================
-// PRICE MAP
-// ==============================
-const PRICE_MAP = {
-  "price_1TAz5VQUeVbFaSLwnwBkGeDT":"lifetime",
-  "price_1TAylfQUeVbFaSLwtxWaHsKD":"lifetime",
-  "price_1TAyiyQUeVbFaSLwykidDo8I":"annuel",
-  "price_1TAyhzQUeVbFaSLwLoA9juzC":"annuel",
-  "price_1TAyevQUeVbFaSLwsGmvuiSV":"mensuel",
-  "price_1TAycBQUeVbFaSLw9MW21kXu":"mensuel"
-};
 
 // ==============================
 function sign(data){
@@ -118,33 +79,19 @@ app.post("/webhook", async (req,res)=>{
 
     const s=event.data.object;
 
-    const full=await stripe.checkout.sessions.retrieve(
-      s.id,{expand:["line_items"]}
-    );
-
-    const priceId=full.line_items.data[0].price.id;
-
-    if(!PRICE_MAP[priceId]) return res.json({received:true});
-
-    const type=PRICE_MAP[priceId];
-
     const email=s.customer_details?.email || s.customer_email;
 
-    if(!email || users.has(email)) return res.json({received:true});
-
-    let expiresAt=null;
-
-    if(type==="mensuel"){
-      expiresAt=new Date(Date.now()+30*86400000);
-    }
-
-    if(type==="annuel"){
-      expiresAt=new Date(Date.now()+365*86400000);
-    }
+    if(!email) return res.json({received:true});
+    if(users.has(email)) return res.json({received:true});
 
     const licence=gen();
 
-    const data={email,licence,type,expiresAt};
+    const data={
+      email,
+      licence,
+      type:"lifetime",
+      expiresAt:null
+    };
 
     users.set(email,{
       ...data,
@@ -167,39 +114,26 @@ app.get("/activate",(req,res)=>{
   const email=req.query.email;
   const u=users.get(email);
 
-  if(!email) return res.status(400).json({error:"email"});
-  if(!u) return res.status(404).json({error:"not found"});
+  if(!u){
+    return res.status(404).json({error:"not found"});
+  }
 
   res.json({
     licence:u.licence,
-    type:u.type,
-    expiresAt:u.expiresAt
+    type:u.type
   });
 });
 
 // ==============================
-// CHECK ACCESS
+// CHECK
 // ==============================
 app.post("/check-access",(req,res)=>{
 
   const {email,machineId}=req.body;
   const u=users.get(email);
 
-  if(!u) return res.status(403).json({error:"refusé"});
-
-  if(sign({
-    email:u.email,
-    licence:u.licence,
-    type:u.type,
-    expiresAt:u.expiresAt
-  })!==u.signature){
-    return res.status(403).json({error:"corrompue"});
-  }
-
-  if(u.expiresAt && new Date()>new Date(u.expiresAt)){
-    u.active=false;
-    save();
-    return res.status(403).json({error:"expirée"});
+  if(!u){
+    return res.status(403).json({error:"refusé"});
   }
 
   if(!u.machineId){
@@ -215,7 +149,7 @@ app.post("/check-access",(req,res)=>{
 });
 
 // ==============================
-// ADMIN USERS 🔥
+// ADMIN
 // ==============================
 app.get("/admin/users",(req,res)=>{
 
@@ -231,4 +165,4 @@ app.get("/admin/users",(req,res)=>{
 // ==============================
 app.listen(process.env.PORT||3000,()=>{
   console.log("RUNNING");
-}
+});
