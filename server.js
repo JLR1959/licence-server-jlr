@@ -129,7 +129,7 @@ async function sendEmail(email, licence){
       html: `
         <h2>Licence activée ✔</h2>
         <p><b>${licence}</b></p>
-        <p>VPIJLR 2026 activé</p>
+        <p>Type: licence active</p>
         <a href="https://jlr1959.github.io/VPIJLR-logiciel-client/">Accéder au logiciel</a>
       `
     });
@@ -143,7 +143,7 @@ async function sendEmail(email, licence){
 }
 
 // ==============================
-// MODULE 10 - WEBHOOK STRIPE
+// MODULE 10 - WEBHOOK STRIPE (AVEC DURÉE)
 // ==============================
 app.post("/webhook", (req, res) => {
 
@@ -180,20 +180,34 @@ app.post("/webhook", (req, res) => {
       return res.json({ received:true });
     }
 
+    // 🔥 TYPE LICENCE (envoyé depuis Stripe metadata)
+    const type = session.metadata?.type || "lifetime";
+
+    let expiresAt = null;
+
+    if(type === "mensuel"){
+      expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    }
+
+    if(type === "annuel"){
+      expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+    }
+
     const licence = generateLicense();
 
     const user = {
       email,
       licence,
-      status: "VPIJLR 2026 activé",
+      type,
       active: true,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      expiresAt: expiresAt ? expiresAt.toISOString() : null
     };
 
     users.set(email, user);
     saveDB();
 
-    addLog("ok","Licence générée - " + email);
+    addLog("ok","Licence générée - " + email + " (" + type + ")");
 
     sendEmail(email, licence);
   }
@@ -202,7 +216,7 @@ app.post("/webhook", (req, res) => {
 });
 
 // ==============================
-// MODULE 11 - ROUTES
+// MODULE 11 - ROUTES + CHECK EXPIRATION
 // ==============================
 app.get("/", (req, res) => {
   res.send("OK");
@@ -228,28 +242,47 @@ app.get("/activate", (req, res) => {
     return res.status(404).json({ error:"not found" });
   }
 
-  addLog("ok","Licence affichée - " + email);
-
   return res.json(user);
 });
 
 app.post("/check-access", (req, res) => {
 
   const { email } = req.body;
-
   const user = users.get(email);
 
-  if(!user || !user.active){
+  if(!user){
     addLog("error","Accès refusé - " + email);
     return res.status(403).json({ error:"refusé" });
   }
 
-  addLog("ok","Accès SaaS - " + email);
+  // 🔥 expiration automatique
+  if(user.expiresAt){
+
+    const now = new Date();
+    const expire = new Date(user.expiresAt);
+
+    if(now > expire){
+      user.active = false;
+      saveDB();
+
+      addLog("error","Licence expirée - " + email);
+
+      return res.status(403).json({ error:"expirée" });
+    }
+  }
+
+  if(!user.active){
+    addLog("error","Accès refusé - " + email);
+    return res.status(403).json({ error:"refusé" });
+  }
+
+  addLog("ok","Accès autorisé - " + email);
 
   return res.json({
     success:true,
     licence:user.licence,
-    status:user.status
+    type:user.type,
+    expiresAt:user.expiresAt
   });
 });
 
