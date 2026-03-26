@@ -23,6 +23,7 @@ function requireEnv(name){
 const STRIPE_SECRET_KEY = requireEnv("STRIPE_SECRET_KEY");
 const STRIPE_WEBHOOK_SECRET = requireEnv("STRIPE_WEBHOOK_SECRET");
 const RESEND_API_KEY = requireEnv("RESEND_API_KEY");
+const ADMIN_KEY = requireEnv("ADMIN_KEY");
 
 // ==============================
 // MODULE 03 - BODY PARSER
@@ -42,7 +43,7 @@ const resend = new Resend(RESEND_API_KEY);
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, stripe-signature");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, stripe-signature, admin-key");
   next();
 });
 
@@ -69,7 +70,7 @@ function saveDB(){
 const users = loadDB();
 
 // ==============================
-// MODULE 07 - PRICE MAPPING 🔥
+// MODULE 07 - PRICE MAPPING
 // ==============================
 const PRICE_MAP = {
   "price_1TAz5VQUeVbFaSLwnwBkGeDT": "lifetime",
@@ -83,10 +84,14 @@ const PRICE_MAP = {
 };
 
 // ==============================
-// MODULE 08 - LOG
+// MODULE 08 - ADMIN MIDDLEWARE 🔐
 // ==============================
-function addLog(type, message){
-  console.log(`[${type}] ${message}`);
+function adminAuth(req, res, next){
+  const key = req.headers["admin-key"];
+  if(key !== ADMIN_KEY){
+    return res.status(403).json({ error:"admin only" });
+  }
+  next();
 }
 
 // ==============================
@@ -115,7 +120,6 @@ app.post("/webhook", async (req, res) => {
       STRIPE_WEBHOOK_SECRET
     );
   }catch{
-    addLog("error","Webhook invalide");
     return res.status(400).send("error");
   }
 
@@ -131,7 +135,6 @@ app.post("/webhook", async (req, res) => {
     const priceId = fullSession.line_items.data[0].price.id;
 
     if(!PRICE_MAP[priceId]){
-      addLog("error","PRICE INCONNU: " + priceId);
       return res.json({ received:true });
     }
 
@@ -161,14 +164,12 @@ app.post("/webhook", async (req, res) => {
       licence,
       type,
       active:true,
-      machineId: null,
-      createdAt: new Date().toISOString(),
+      machineId:null,
+      createdAt:new Date().toISOString(),
       expiresAt: expiresAt ? expiresAt.toISOString() : null
     });
 
     saveDB();
-
-    addLog("ok","Licence créée - " + email + " (" + type + ")");
 
     try{
       await resend.emails.send({
@@ -177,16 +178,14 @@ app.post("/webhook", async (req, res) => {
         subject: "Licence activée",
         html: `<b>${licence}</b>`
       });
-    }catch{
-      addLog("error","Email fail " + email);
-    }
+    }catch{}
   }
 
   res.json({ received:true });
 });
 
 // ==============================
-// MODULE 11 - CHECK ACCESS 🔐
+// MODULE 11 - CHECK ACCESS
 // ==============================
 app.post("/check-access", (req, res) => {
 
@@ -209,9 +208,7 @@ app.post("/check-access", (req, res) => {
   }
 
   if(user.machineId !== machineId){
-    return res.status(403).json({
-      error:"licence utilisée sur un autre appareil"
-    });
+    return res.status(403).json({ error:"autre appareil" });
   }
 
   if(!user.active){
@@ -226,30 +223,78 @@ app.post("/check-access", (req, res) => {
 });
 
 // ==============================
-// MODULE 12 - RESET MACHINE 🔥
+// MODULE 12 - RESET MACHINE
 // ==============================
 app.post("/reset-machine", (req, res) => {
 
   const { email } = req.body;
   const user = users.get(email);
 
-  if(!user){
-    return res.status(404).json({ error:"introuvable" });
-  }
+  if(!user) return res.status(404).json({ error:"introuvable" });
 
   user.machineId = null;
   saveDB();
 
-  addLog("ok","RESET machine - " + email);
+  return res.json({ success:true });
+});
 
-  return res.json({
-    success:true,
-    message:"Machine réinitialisée"
+// ==============================
+// MODULE 13 - ADMIN PANEL 🔥
+// ==============================
+
+// liste des utilisateurs
+app.get("/admin/users", adminAuth, (req, res) => {
+  res.json(Array.from(users.values()));
+});
+
+// supprimer licence
+app.post("/admin/delete", adminAuth, (req, res) => {
+  const { email } = req.body;
+
+  if(!users.has(email)){
+    return res.status(404).json({ error:"introuvable" });
+  }
+
+  users.delete(email);
+  saveDB();
+
+  res.json({ success:true });
+});
+
+// reset machine admin
+app.post("/admin/reset", adminAuth, (req, res) => {
+  const { email } = req.body;
+
+  const user = users.get(email);
+  if(!user) return res.status(404).json({ error:"introuvable" });
+
+  user.machineId = null;
+  saveDB();
+
+  res.json({ success:true });
+});
+
+// stats
+app.get("/admin/stats", adminAuth, (req, res) => {
+
+  let total = users.size;
+  let actifs = 0;
+  let expires = 0;
+
+  for(const u of users.values()){
+    if(u.active) actifs++;
+    if(u.expiresAt && new Date() > new Date(u.expiresAt)) expires++;
+  }
+
+  res.json({
+    total,
+    actifs,
+    expires
   });
 });
 
 // ==============================
-// MODULE 13 - START
+// MODULE 14 - START
 // ==============================
 const PORT = process.env.PORT || 3000;
 
