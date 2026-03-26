@@ -8,15 +8,39 @@ import fs from "fs";
 
 const app = express();
 
-// ⚠️ STRIPE RAW BODY
+// ==============================
+// MODULE 02 - ENV VALIDATION 🔐
+// ==============================
+function requireEnv(name){
+  const value = process.env[name];
+
+  if(!value){
+    console.error(`❌ VARIABLE MANQUANTE: ${name}`);
+    console.error("⛔ ARRÊT DU SERVEUR (SECURITÉ)");
+    process.exit(1);
+  }
+
+  return value;
+}
+
+const STRIPE_SECRET_KEY = requireEnv("STRIPE_SECRET_KEY");
+const STRIPE_WEBHOOK_SECRET = requireEnv("STRIPE_WEBHOOK_SECRET");
+const RESEND_API_KEY = requireEnv("RESEND_API_KEY");
+
+// ==============================
+// MODULE 03 - BODY PARSER
+// ==============================
 app.use("/webhook", express.raw({ type: "application/json" }));
 app.use(express.json());
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-const resend = new Resend(process.env.RESEND_API_KEY);
+// ==============================
+// MODULE 04 - INIT SERVICES
+// ==============================
+const stripe = new Stripe(STRIPE_SECRET_KEY);
+const resend = new Resend(RESEND_API_KEY);
 
 // ==============================
-// MODULE 02 - CORS
+// MODULE 05 - CORS
 // ==============================
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -26,30 +50,43 @@ app.use((req, res, next) => {
 });
 
 // ==============================
-// MODULE 03 - DATABASE (PERSISTENT)
+// MODULE 06 - DATABASE SAFE
 // ==============================
 const DB_FILE = "./licences.json";
 
 function loadDB(){
   try{
+    if(!fs.existsSync(DB_FILE)){
+      fs.writeFileSync(DB_FILE, JSON.stringify([]));
+    }
+
     const data = fs.readFileSync(DB_FILE);
+
+    if(!data.length) return new Map();
+
     return new Map(JSON.parse(data));
-  }catch{
+
+  }catch(e){
+    console.error("DB LOAD ERROR:", e);
     return new Map();
   }
 }
 
 function saveDB(){
-  fs.writeFileSync(
-    DB_FILE,
-    JSON.stringify(Array.from(users.entries()))
-  );
+  try{
+    fs.writeFileSync(
+      DB_FILE,
+      JSON.stringify(Array.from(users.entries()), null, 2)
+    );
+  }catch(e){
+    console.error("DB SAVE ERROR:", e);
+  }
 }
 
 const users = loadDB();
 
 // ==============================
-// MODULE 04 - LOG SYSTEM
+// MODULE 07 - LOG SYSTEM
 // ==============================
 let logs = [];
 
@@ -67,7 +104,7 @@ function addLog(type, message){
 }
 
 // ==============================
-// MODULE 05 - LICENCE GENERATOR
+// MODULE 08 - LICENCE GENERATOR
 // ==============================
 function generateLicense() {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -81,12 +118,10 @@ function generateLicense() {
 }
 
 // ==============================
-// MODULE 06 - EMAIL
+// MODULE 09 - EMAIL
 // ==============================
 async function sendEmail(email, licence){
-
   try{
-
     await resend.emails.send({
       from: "VPIJLR <activation@ton-app.com>",
       to: email,
@@ -102,24 +137,23 @@ async function sendEmail(email, licence){
     addLog("ok","Email envoyé - " + email);
 
   }catch(e){
+    console.error(e);
     addLog("error","Erreur email - " + email);
   }
 }
 
 // ==============================
-// MODULE 07 - WEBHOOK STRIPE
+// MODULE 10 - WEBHOOK STRIPE
 // ==============================
 app.post("/webhook", (req, res) => {
-
-  const signature = req.headers["stripe-signature"];
 
   let event;
 
   try{
     event = stripe.webhooks.constructEvent(
       req.body,
-      signature,
-      process.env.STRIPE_WEBHOOK_SECRET
+      req.headers["stripe-signature"],
+      STRIPE_WEBHOOK_SECRET
     );
   }catch(err){
     addLog("error","Signature Stripe invalide");
@@ -140,8 +174,6 @@ app.post("/webhook", (req, res) => {
       addLog("error","Email Stripe manquant");
       return res.json({ received:true });
     }
-
-    addLog("info","Paiement confirmé - " + email);
 
     if(users.has(email)){
       addLog("info","Déjà actif - " + email);
@@ -170,56 +202,16 @@ app.post("/webhook", (req, res) => {
 });
 
 // ==============================
-// MODULE 08 - IMPORT STRIPE 🔥
+// MODULE 11 - ROUTES
 // ==============================
-app.get("/import-stripe", async (req, res) => {
-
-  try{
-
-    const sessions = await stripe.checkout.sessions.list({
-      limit: 20
-    });
-
-    let imported = [];
-
-    for(const s of sessions.data){
-
-      const email =
-        s.customer_details?.email ||
-        s.customer_email;
-
-      if(!email) continue;
-      if(users.has(email)) continue;
-
-      const licence = generateLicense();
-
-      const user = {
-        email,
-        licence,
-        status: "VPIJLR 2026 activé",
-        active: true,
-        createdAt: new Date().toISOString(),
-        source: "import-stripe"
-      };
-
-      users.set(email, user);
-      saveDB();
-
-      addLog("ok","Import licence - " + email);
-
-      imported.push(user);
-    }
-
-    res.json(imported);
-
-  }catch(e){
-    res.status(500).json({ error:e.message });
-  }
+app.get("/", (req, res) => {
+  res.send("OK");
 });
 
-// ==============================
-// MODULE 09 - ACTIVATE (SUCCESS PAGE)
-// ==============================
+app.get("/logs", (req, res) => {
+  res.json(logs);
+});
+
 app.get("/activate", (req, res) => {
 
   const email = req.query.email;
@@ -241,9 +233,6 @@ app.get("/activate", (req, res) => {
   return res.json(user);
 });
 
-// ==============================
-// MODULE 10 - CHECK ACCESS
-// ==============================
 app.post("/check-access", (req, res) => {
 
   const { email } = req.body;
@@ -265,13 +254,6 @@ app.post("/check-access", (req, res) => {
 });
 
 // ==============================
-// MODULE 11 - LOGS LIVE
-// ==============================
-app.get("/logs", (req, res) => {
-  res.json(logs);
-});
-
-// ==============================
 // MODULE 12 - HEARTBEAT
 // ==============================
 setInterval(()=>{
@@ -279,18 +261,11 @@ setInterval(()=>{
 },5000);
 
 // ==============================
-// MODULE 13 - ROOT
-// ==============================
-app.get("/", (req, res) => {
-  res.send("OK");
-});
-
-// ==============================
-// MODULE 14 - START
+// MODULE 13 - START
 // ==============================
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log("🚀 Serveur prêt");
+  console.log("🚀 Serveur prêt sur", PORT);
   addLog("ok","Serveur démarré");
 });
