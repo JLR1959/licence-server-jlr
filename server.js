@@ -19,17 +19,20 @@ app.use((req,res,next)=>{
 
 app.use(express.json());
 
+// ==============================
+// MODULE 03 - STRIPE
+// ==============================
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // ==============================
-// MODULE 03 - ROOT
+// MODULE 04 - ROOT
 // ==============================
 app.get("/", (req,res)=>{
   res.send("SERVER OK");
 });
 
 // ==============================
-// MODULE 04 - DB
+// MODULE 05 - DATABASE
 // ==============================
 const FILE="./licences.json";
 
@@ -51,7 +54,7 @@ function save(){
 const users = load();
 
 // ==============================
-// MODULE 05 - PRICE MAP
+// MODULE 06 - PRICE MAP
 // ==============================
 const PRICE_MAP = {
   "price_1TAz5VQUeVbFaSLwnwBkGeDT": {type:"lifetime", max:5},
@@ -65,7 +68,7 @@ const PRICE_MAP = {
 };
 
 // ==============================
-// MODULE 06 - LICENCE
+// MODULE 07 - LICENCE
 // ==============================
 function generateLicence(){
   const chars="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -74,7 +77,21 @@ function generateLicence(){
 }
 
 // ==============================
-// MODULE 07 - ACTIVATE SESSION 🔥
+// MODULE 08 - DEBUG SESSION 🔥
+// ==============================
+app.get("/debug-session", async (req,res)=>{
+
+  try{
+    const session = await stripe.checkout.sessions.retrieve(req.query.id);
+    res.json(session);
+  }catch(e){
+    res.json({ error: e.message });
+  }
+
+});
+
+// ==============================
+// MODULE 09 - ACTIVATE SESSION 🔥
 // ==============================
 app.post("/activate-session", async (req,res)=>{
 
@@ -82,19 +99,34 @@ app.post("/activate-session", async (req,res)=>{
 
     const { session_id } = req.body;
 
+    console.log("SESSION:", session_id);
+
     const session = await stripe.checkout.sessions.retrieve(
       session_id,
       { expand:["line_items"] }
     );
 
-    const priceId = session.line_items.data[0].price.id;
-    const config = PRICE_MAP[priceId];
+    if(!session){
+      return res.status(400).json({error:"session introuvable"});
+    }
 
-    if(!config){
+    const priceId = session.line_items?.data?.[0]?.price?.id;
+
+    console.log("PRICE:", priceId);
+
+    if(!priceId || !PRICE_MAP[priceId]){
       return res.status(400).json({error:"price inconnu"});
     }
 
+    const config = PRICE_MAP[priceId];
+
     const email = session.customer_details?.email || session.customer_email;
+
+    console.log("EMAIL:", email);
+
+    if(!email){
+      return res.status(400).json({error:"email manquant"});
+    }
 
     let expiresAt = null;
 
@@ -129,17 +161,19 @@ app.post("/activate-session", async (req,res)=>{
     res.json(user);
 
   }catch(err){
-    console.log("ERROR:", err.message);
-    res.status(500).json({error:"activation fail"});
+    console.log("❌ ERROR:", err.message);
+    res.status(500).json({error:err.message});
   }
+
 });
 
 // ==============================
-// MODULE 08 - CHECK ACCESS 🔥
+// MODULE 10 - CHECK ACCESS
 // ==============================
 app.post("/check-access",(req,res)=>{
 
   const { email, machineId } = req.body;
+
   const user = users.get(email);
 
   if(!user){
@@ -160,14 +194,11 @@ app.post("/check-access",(req,res)=>{
     save();
   }
 
-  res.json({
-    success:true,
-    licence:user.licence
-  });
+  res.json({success:true, licence:user.licence});
 });
 
 // ==============================
-// MODULE 09 - START
+// MODULE 11 - START
 // ==============================
 app.listen(process.env.PORT || 3000, ()=>{
   console.log("SERVER RUNNING");
