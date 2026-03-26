@@ -43,10 +43,10 @@ app.use((req,res,next)=>{
 });
 
 // ==============================
-// ROOT FIX 🔥
+// ROOT
 // ==============================
 app.get("/", (req,res)=>{
-  res.send("✅ VPIJLR LICENCE SERVER RUNNING");
+  res.send("✅ SERVER OK");
 });
 
 // ==============================
@@ -155,15 +155,6 @@ app.post("/webhook", async (req,res)=>{
     });
 
     save();
-
-    try{
-      await resend.emails.send({
-        from:"VPIJLR <activation@ton-app.com>",
-        to:email,
-        subject:"Licence activée",
-        html:`<b>${licence}</b>`
-      });
-    }catch{}
   }
 
   res.json({received:true});
@@ -187,7 +178,7 @@ app.get("/activate",(req,res)=>{
 });
 
 // ==============================
-// CHECK
+// CHECK ACCESS
 // ==============================
 app.post("/check-access",(req,res)=>{
 
@@ -224,6 +215,20 @@ app.post("/check-access",(req,res)=>{
 });
 
 // ==============================
+// ADMIN USERS 🔥
+// ==============================
+app.get("/admin/users",(req,res)=>{
+
+  const key=req.headers["admin-key"];
+
+  if(key!==ADMIN_KEY){
+    return res.status(403).json({error:"forbidden"});
+  }
+
+  res.json(Array.from(users.values()));
+});
+
+// ==============================
 app.listen(process.env.PORT||3000,()=>{
   console.log("RUNNING");
-});
+}
