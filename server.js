@@ -8,7 +8,7 @@ import fs from "fs";
 const app = express();
 
 // ==============================
-// MODULE 02 - CORS 🔥
+// MODULE 02 - CORS
 // ==============================
 app.use((req,res,next)=>{
   res.header("Access-Control-Allow-Origin","*");
@@ -18,9 +18,8 @@ app.use((req,res,next)=>{
 });
 
 // ==============================
-// MODULE 03 - BODY PARSER
+// MODULE 03 - BODY
 // ==============================
-app.use("/webhook", express.raw({ type: "application/json" }));
 app.use(express.json());
 
 // ==============================
@@ -29,7 +28,7 @@ app.use(express.json());
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // ==============================
-// MODULE 05 - ROOT ✔
+// MODULE 05 - ROOT
 // ==============================
 app.get("/", (req,res)=>{
   res.send("SERVER OK");
@@ -38,7 +37,7 @@ app.get("/", (req,res)=>{
 // ==============================
 // MODULE 06 - DATABASE
 // ==============================
-const FILE="./licences.json";
+const FILE = "./licences.json";
 
 function load(){
   try{
@@ -58,7 +57,7 @@ function save(){
 const users = load();
 
 // ==============================
-// MODULE 07 - PRICE MAP 🔥
+// MODULE 07 - PRICE MAP
 // ==============================
 const PRICE_MAP = {
   "price_1TAz5VQUeVbFaSLwnwBkGeDT": "lifetime_5",
@@ -81,39 +80,27 @@ function generateLicence(){
 }
 
 // ==============================
-// MODULE 09 - WEBHOOK STRIPE
+// MODULE 09 - ACTIVATE SESSION 🔥
 // ==============================
-app.post("/webhook", async (req,res)=>{
-
-  let event;
+app.post("/activate-session", async (req,res)=>{
 
   try{
-    event = stripe.webhooks.constructEvent(
-      req.body,
-      req.headers["stripe-signature"],
-      process.env.STRIPE_WEBHOOK_SECRET
-    );
-  }catch(err){
-    console.log("❌ Webhook signature error");
-    return res.status(400).send("error");
-  }
 
-  if(event.type === "checkout.session.completed"){
+    const { session_id } = req.body;
 
-    const session = event.data.object;
+    if(!session_id){
+      return res.status(400).json({error:"missing session_id"});
+    }
 
-    const full = await stripe.checkout.sessions.retrieve(
-      session.id,
+    const session = await stripe.checkout.sessions.retrieve(
+      session_id,
       { expand:["line_items"] }
     );
 
-    const priceId = full.line_items.data[0].price.id;
-
-    console.log("PRICE ID:", priceId);
+    const priceId = session.line_items.data[0].price.id;
 
     if(!PRICE_MAP[priceId]){
-      console.log("❌ PRICE INCONNU");
-      return res.json({received:true});
+      return res.status(400).json({error:"unknown price"});
     }
 
     const type = PRICE_MAP[priceId];
@@ -121,8 +108,7 @@ app.post("/webhook", async (req,res)=>{
     const email = session.customer_details?.email || session.customer_email;
 
     if(!email){
-      console.log("❌ EMAIL MANQUANT");
-      return res.json({received:true});
+      return res.status(400).json({error:"no email"});
     }
 
     let expiresAt = null;
@@ -135,33 +121,52 @@ app.post("/webhook", async (req,res)=>{
       expiresAt = new Date(Date.now() + 365 * 86400000);
     }
 
-    const licence = generateLicence();
+    // éviter doublon
+    let user = users.get(email);
 
-    users.set(email,{
-      email,
-      licence,
-      type,
-      expiresAt,
-      active:true,
-      machineId:null,
-      createdAt:new Date().toISOString()
+    if(!user){
+
+      const licence = generateLicence();
+
+      user = {
+        email,
+        licence,
+        type,
+        expiresAt,
+        active:true,
+        machineId:null,
+        createdAt:new Date().toISOString()
+      };
+
+      users.set(email, user);
+      save();
+
+      console.log("✅ LICENCE CRÉÉE:", email, type);
+
+    }else{
+      console.log("ℹ️ LICENCE EXISTANTE:", email);
+    }
+
+    res.json({
+      email:user.email,
+      licence:user.licence,
+      type:user.type,
+      expiresAt:user.expiresAt
     });
 
-    save();
-
-    console.log("✅ LICENCE CRÉÉE:", email, type);
+  }catch(err){
+    console.log("❌ ERROR:", err.message);
+    res.status(500).json({error:"server error"});
   }
 
-  res.json({received:true});
 });
 
 // ==============================
-// MODULE 10 - ACTIVATE
+// MODULE 10 - ACTIVATE (fallback)
 // ==============================
 app.get("/activate",(req,res)=>{
 
   const email = req.query.email;
-
   const user = users.get(email);
 
   if(!user){
@@ -179,5 +184,5 @@ app.get("/activate",(req,res)=>{
 // MODULE 11 - START
 // ==============================
 app.listen(process.env.PORT || 3000, ()=>{
-  console.log("🚀 RUNNING");
+  console.log("🚀 SERVER RUNNING");
 });
