@@ -170,7 +170,6 @@ app.post("/webhook", async (req, res) => {
 
     addLog("ok","Licence créée - " + email + " (" + type + ")");
 
-    // email
     try{
       await resend.emails.send({
         from: "VPIJLR <activation@ton-app.com>",
@@ -178,7 +177,7 @@ app.post("/webhook", async (req, res) => {
         subject: "Licence activée",
         html: `<b>${licence}</b>`
       });
-    }catch(e){
+    }catch{
       addLog("error","Email fail " + email);
     }
   }
@@ -196,7 +195,6 @@ app.post("/check-access", (req, res) => {
 
   if(!user) return res.status(403).json({ error:"refusé" });
 
-  // expiration
   if(user.expiresAt){
     if(new Date() > new Date(user.expiresAt)){
       user.active = false;
@@ -205,13 +203,11 @@ app.post("/check-access", (req, res) => {
     }
   }
 
-  // première activation
   if(!user.machineId){
     user.machineId = machineId;
     saveDB();
   }
 
-  // autre machine
   if(user.machineId !== machineId){
     return res.status(403).json({
       error:"licence utilisée sur un autre appareil"
@@ -230,7 +226,30 @@ app.post("/check-access", (req, res) => {
 });
 
 // ==============================
-// MODULE 12 - START
+// MODULE 12 - RESET MACHINE 🔥
+// ==============================
+app.post("/reset-machine", (req, res) => {
+
+  const { email } = req.body;
+  const user = users.get(email);
+
+  if(!user){
+    return res.status(404).json({ error:"introuvable" });
+  }
+
+  user.machineId = null;
+  saveDB();
+
+  addLog("ok","RESET machine - " + email);
+
+  return res.json({
+    success:true,
+    message:"Machine réinitialisée"
+  });
+});
+
+// ==============================
+// MODULE 13 - START
 // ==============================
 const PORT = process.env.PORT || 3000;
 
