@@ -5,6 +5,7 @@ import express from "express";
 import Stripe from "stripe";
 import { Resend } from "resend";
 import fs from "fs";
+import crypto from "crypto";
 
 const app = express();
 
@@ -24,6 +25,7 @@ const STRIPE_SECRET_KEY = requireEnv("STRIPE_SECRET_KEY");
 const STRIPE_WEBHOOK_SECRET = requireEnv("STRIPE_WEBHOOK_SECRET");
 const RESEND_API_KEY = requireEnv("RESEND_API_KEY");
 const ADMIN_KEY = requireEnv("ADMIN_KEY");
+const LICENCE_SECRET = requireEnv("LICENCE_SECRET");
 
 // ==============================
 // MODULE 03 - BODY PARSER
@@ -84,18 +86,27 @@ const PRICE_MAP = {
 };
 
 // ==============================
-// MODULE 08 - ADMIN MIDDLEWARE 🔐
+// MODULE 08 - ADMIN AUTH
 // ==============================
 function adminAuth(req, res, next){
-  const key = req.headers["admin-key"];
-  if(key !== ADMIN_KEY){
+  if(req.headers["admin-key"] !== ADMIN_KEY){
     return res.status(403).json({ error:"admin only" });
   }
   next();
 }
 
 // ==============================
-// MODULE 09 - LICENCE GENERATOR
+// MODULE 09 - LICENCE SIGNATURE 🔐
+// ==============================
+function signLicence(data){
+  return crypto
+    .createHmac("sha256", LICENCE_SECRET)
+    .update(JSON.stringify(data))
+    .digest("hex");
+}
+
+// ==============================
+// MODULE 10 - GENERATE LICENCE
 // ==============================
 function generateLicense() {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -107,7 +118,7 @@ function generateLicense() {
 }
 
 // ==============================
-// MODULE 10 - WEBHOOK STRIPE
+// MODULE 11 - WEBHOOK STRIPE
 // ==============================
 app.post("/webhook", async (req, res) => {
 
@@ -134,9 +145,7 @@ app.post("/webhook", async (req, res) => {
 
     const priceId = fullSession.line_items.data[0].price.id;
 
-    if(!PRICE_MAP[priceId]){
-      return res.json({ received:true });
-    }
+    if(!PRICE_MAP[priceId]) return res.json({ received:true });
 
     const type = PRICE_MAP[priceId];
 
@@ -144,8 +153,7 @@ app.post("/webhook", async (req, res) => {
       session.customer_details?.email ||
       session.customer_email;
 
-    if(!email) return res.json({ received:true });
-    if(users.has(email)) return res.json({ received:true });
+    if(!email || users.has(email)) return res.json({ received:true });
 
     let expiresAt = null;
 
@@ -159,14 +167,21 @@ app.post("/webhook", async (req, res) => {
 
     const licence = generateLicense();
 
-    users.set(email, {
+    const dataToSign = {
       email,
       licence,
       type,
+      expiresAt
+    };
+
+    const signature = signLicence(dataToSign);
+
+    users.set(email, {
+      ...dataToSign,
+      signature,
       active:true,
       machineId:null,
-      createdAt:new Date().toISOString(),
-      expiresAt: expiresAt ? expiresAt.toISOString() : null
+      createdAt:new Date().toISOString()
     });
 
     saveDB();
@@ -185,7 +200,7 @@ app.post("/webhook", async (req, res) => {
 });
 
 // ==============================
-// MODULE 11 - CHECK ACCESS
+// MODULE 12 - CHECK ACCESS 🔐
 // ==============================
 app.post("/check-access", (req, res) => {
 
@@ -193,6 +208,18 @@ app.post("/check-access", (req, res) => {
   const user = users.get(email);
 
   if(!user) return res.status(403).json({ error:"refusé" });
+
+  // signature check
+  const validSig = signLicence({
+    email:user.email,
+    licence:user.licence,
+    type:user.type,
+    expiresAt:user.expiresAt
+  });
+
+  if(validSig !== user.signature){
+    return res.status(403).json({ error:"licence corrompue" });
+  }
 
   if(user.expiresAt){
     if(new Date() > new Date(user.expiresAt)){
@@ -218,79 +245,15 @@ app.post("/check-access", (req, res) => {
   return res.json({
     success:true,
     licence:user.licence,
-    type:user.type
+    signature:user.signature
   });
 });
 
 // ==============================
-// MODULE 12 - RESET MACHINE
+// MODULE 13 - ADMIN
 // ==============================
-app.post("/reset-machine", (req, res) => {
-
-  const { email } = req.body;
-  const user = users.get(email);
-
-  if(!user) return res.status(404).json({ error:"introuvable" });
-
-  user.machineId = null;
-  saveDB();
-
-  return res.json({ success:true });
-});
-
-// ==============================
-// MODULE 13 - ADMIN PANEL 🔥
-// ==============================
-
-// liste des utilisateurs
-app.get("/admin/users", adminAuth, (req, res) => {
+app.get("/admin/users", adminAuth, (req,res)=>{
   res.json(Array.from(users.values()));
-});
-
-// supprimer licence
-app.post("/admin/delete", adminAuth, (req, res) => {
-  const { email } = req.body;
-
-  if(!users.has(email)){
-    return res.status(404).json({ error:"introuvable" });
-  }
-
-  users.delete(email);
-  saveDB();
-
-  res.json({ success:true });
-});
-
-// reset machine admin
-app.post("/admin/reset", adminAuth, (req, res) => {
-  const { email } = req.body;
-
-  const user = users.get(email);
-  if(!user) return res.status(404).json({ error:"introuvable" });
-
-  user.machineId = null;
-  saveDB();
-
-  res.json({ success:true });
-});
-
-// stats
-app.get("/admin/stats", adminAuth, (req, res) => {
-
-  let total = users.size;
-  let actifs = 0;
-  let expires = 0;
-
-  for(const u of users.values()){
-    if(u.active) actifs++;
-    if(u.expiresAt && new Date() > new Date(u.expiresAt)) expires++;
-  }
-
-  res.json({
-    total,
-    actifs,
-    expires
-  });
 });
 
 // ==============================
