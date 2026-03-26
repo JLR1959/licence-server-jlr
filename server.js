@@ -10,15 +10,15 @@ import crypto from "crypto";
 const app = express();
 
 // ==============================
-// MODULE 02 - ENV VALIDATION 🔐
+// MODULE 02 - ENV
 // ==============================
 function requireEnv(name){
-  const value = process.env[name];
-  if(!value){
-    console.error(`❌ VARIABLE MANQUANTE: ${name}`);
+  const v = process.env[name];
+  if(!v){
+    console.error("Missing:", name);
     process.exit(1);
   }
-  return value;
+  return v;
 }
 
 const STRIPE_SECRET_KEY = requireEnv("STRIPE_SECRET_KEY");
@@ -28,104 +28,84 @@ const ADMIN_KEY = requireEnv("ADMIN_KEY");
 const LICENCE_SECRET = requireEnv("LICENCE_SECRET");
 
 // ==============================
-// MODULE 03 - BODY PARSER
-// ==============================
 app.use("/webhook", express.raw({ type: "application/json" }));
 app.use(express.json());
 
-// ==============================
-// MODULE 04 - INIT SERVICES
 // ==============================
 const stripe = new Stripe(STRIPE_SECRET_KEY);
 const resend = new Resend(RESEND_API_KEY);
 
 // ==============================
-// MODULE 05 - CORS
-// ==============================
-app.use((req, res, next) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, stripe-signature, admin-key");
+app.use((req,res,next)=>{
+  res.setHeader("Access-Control-Allow-Origin","*");
+  res.setHeader("Access-Control-Allow-Headers","*");
   next();
 });
 
 // ==============================
-// MODULE 06 - DATABASE
+// ROOT FIX 🔥
 // ==============================
-const DB_FILE = "./licences.json";
+app.get("/", (req,res)=>{
+  res.send("✅ VPIJLR LICENCE SERVER RUNNING");
+});
 
-function loadDB(){
+// ==============================
+// DB
+// ==============================
+const FILE="./licences.json";
+
+function load(){
   try{
-    if(!fs.existsSync(DB_FILE)){
-      fs.writeFileSync(DB_FILE, JSON.stringify([]));
+    if(!fs.existsSync(FILE)){
+      fs.writeFileSync(FILE,"[]");
     }
-    return new Map(JSON.parse(fs.readFileSync(DB_FILE)));
+    return new Map(JSON.parse(fs.readFileSync(FILE)));
   }catch{
     return new Map();
   }
 }
 
-function saveDB(){
-  fs.writeFileSync(DB_FILE, JSON.stringify(Array.from(users.entries()), null, 2));
+function save(){
+  fs.writeFileSync(FILE, JSON.stringify(Array.from(users.entries()),null,2));
 }
 
-const users = loadDB();
+const users=load();
 
 // ==============================
-// MODULE 07 - PRICE MAPPING
+// PRICE MAP
 // ==============================
 const PRICE_MAP = {
-  "price_1TAz5VQUeVbFaSLwnwBkGeDT": "lifetime",
-  "price_1TAylfQUeVbFaSLwtxWaHsKD": "lifetime",
-
-  "price_1TAyiyQUeVbFaSLwykidDo8I": "annuel",
-  "price_1TAyhzQUeVbFaSLwLoA9juzC": "annuel",
-
-  "price_1TAyevQUeVbFaSLwsGmvuiSV": "mensuel",
-  "price_1TAycBQUeVbFaSLw9MW21kXu": "mensuel"
+  "price_1TAz5VQUeVbFaSLwnwBkGeDT":"lifetime",
+  "price_1TAylfQUeVbFaSLwtxWaHsKD":"lifetime",
+  "price_1TAyiyQUeVbFaSLwykidDo8I":"annuel",
+  "price_1TAyhzQUeVbFaSLwLoA9juzC":"annuel",
+  "price_1TAyevQUeVbFaSLwsGmvuiSV":"mensuel",
+  "price_1TAycBQUeVbFaSLw9MW21kXu":"mensuel"
 };
 
 // ==============================
-// MODULE 08 - ADMIN AUTH
-// ==============================
-function adminAuth(req, res, next){
-  if(req.headers["admin-key"] !== ADMIN_KEY){
-    return res.status(403).json({ error:"admin only" });
-  }
-  next();
-}
-
-// ==============================
-// MODULE 09 - SIGNATURE
-// ==============================
-function signLicence(data){
-  return crypto
-    .createHmac("sha256", LICENCE_SECRET)
+function sign(data){
+  return crypto.createHmac("sha256",LICENCE_SECRET)
     .update(JSON.stringify(data))
     .digest("hex");
 }
 
 // ==============================
-// MODULE 10 - GENERATE LICENCE
-// ==============================
-function generateLicense() {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  const block = () =>
-    Array.from({ length: 6 }, () =>
-      chars[Math.floor(Math.random() * chars.length)]
-    ).join("");
-  return Array.from({ length: 7 }, block).join("-");
+function gen(){
+  const c="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  const b=()=>Array.from({length:6},()=>c[Math.floor(Math.random()*c.length)]).join("");
+  return Array.from({length:7},b).join("-");
 }
 
 // ==============================
-// MODULE 11 - WEBHOOK STRIPE
+// WEBHOOK
 // ==============================
-app.post("/webhook", async (req, res) => {
+app.post("/webhook", async (req,res)=>{
 
   let event;
 
   try{
-    event = stripe.webhooks.constructEvent(
+    event=stripe.webhooks.constructEvent(
       req.body,
       req.headers["stripe-signature"],
       STRIPE_WEBHOOK_SECRET
@@ -134,155 +114,116 @@ app.post("/webhook", async (req, res) => {
     return res.status(400).send("error");
   }
 
-  if(event.type === "checkout.session.completed"){
+  if(event.type==="checkout.session.completed"){
 
-    const session = event.data.object;
+    const s=event.data.object;
 
-    const fullSession = await stripe.checkout.sessions.retrieve(
-      session.id,
-      { expand: ["line_items"] }
+    const full=await stripe.checkout.sessions.retrieve(
+      s.id,{expand:["line_items"]}
     );
 
-    const priceId = fullSession.line_items.data[0].price.id;
+    const priceId=full.line_items.data[0].price.id;
 
-    if(!PRICE_MAP[priceId]) return res.json({ received:true });
+    if(!PRICE_MAP[priceId]) return res.json({received:true});
 
-    const type = PRICE_MAP[priceId];
+    const type=PRICE_MAP[priceId];
 
-    const email =
-      session.customer_details?.email ||
-      session.customer_email;
+    const email=s.customer_details?.email || s.customer_email;
 
-    if(!email || users.has(email)) return res.json({ received:true });
+    if(!email || users.has(email)) return res.json({received:true});
 
-    let expiresAt = null;
+    let expiresAt=null;
 
-    if(type === "mensuel"){
-      expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    if(type==="mensuel"){
+      expiresAt=new Date(Date.now()+30*86400000);
     }
 
-    if(type === "annuel"){
-      expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+    if(type==="annuel"){
+      expiresAt=new Date(Date.now()+365*86400000);
     }
 
-    const licence = generateLicense();
+    const licence=gen();
 
-    const dataToSign = {
-      email,
-      licence,
-      type,
-      expiresAt
-    };
+    const data={email,licence,type,expiresAt};
 
-    const signature = signLicence(dataToSign);
-
-    users.set(email, {
-      ...dataToSign,
-      signature,
+    users.set(email,{
+      ...data,
+      signature:sign(data),
       active:true,
       machineId:null,
       createdAt:new Date().toISOString()
     });
 
-    saveDB();
+    save();
 
     try{
       await resend.emails.send({
-        from: "VPIJLR <activation@ton-app.com>",
-        to: email,
-        subject: "Licence activée",
-        html: `<b>${licence}</b>`
+        from:"VPIJLR <activation@ton-app.com>",
+        to:email,
+        subject:"Licence activée",
+        html:`<b>${licence}</b>`
       });
     }catch{}
   }
 
-  res.json({ received:true });
+  res.json({received:true});
 });
 
 // ==============================
-// MODULE 12 - ACTIVATE 🔥
+// ACTIVATE
 // ==============================
-app.get("/activate", (req, res) => {
+app.get("/activate",(req,res)=>{
+  const email=req.query.email;
+  const u=users.get(email);
 
-  const email = req.query.email;
-  const user = users.get(email);
+  if(!email) return res.status(400).json({error:"email"});
+  if(!u) return res.status(404).json({error:"not found"});
 
-  if(!email){
-    return res.status(400).json({ error:"email manquant" });
-  }
-
-  if(!user){
-    return res.status(404).json({ error:"introuvable" });
-  }
-
-  return res.json({
-    licence: user.licence,
-    type: user.type,
-    expiresAt: user.expiresAt
+  res.json({
+    licence:u.licence,
+    type:u.type,
+    expiresAt:u.expiresAt
   });
 });
 
 // ==============================
-// MODULE 13 - CHECK ACCESS
+// CHECK
 // ==============================
-app.post("/check-access", (req, res) => {
+app.post("/check-access",(req,res)=>{
 
-  const { email, machineId } = req.body;
-  const user = users.get(email);
+  const {email,machineId}=req.body;
+  const u=users.get(email);
 
-  if(!user) return res.status(403).json({ error:"refusé" });
+  if(!u) return res.status(403).json({error:"refusé"});
 
-  const validSig = signLicence({
-    email:user.email,
-    licence:user.licence,
-    type:user.type,
-    expiresAt:user.expiresAt
-  });
-
-  if(validSig !== user.signature){
-    return res.status(403).json({ error:"licence corrompue" });
+  if(sign({
+    email:u.email,
+    licence:u.licence,
+    type:u.type,
+    expiresAt:u.expiresAt
+  })!==u.signature){
+    return res.status(403).json({error:"corrompue"});
   }
 
-  if(user.expiresAt){
-    if(new Date() > new Date(user.expiresAt)){
-      user.active = false;
-      saveDB();
-      return res.status(403).json({ error:"expirée" });
-    }
+  if(u.expiresAt && new Date()>new Date(u.expiresAt)){
+    u.active=false;
+    save();
+    return res.status(403).json({error:"expirée"});
   }
 
-  if(!user.machineId){
-    user.machineId = machineId;
-    saveDB();
+  if(!u.machineId){
+    u.machineId=machineId;
+    save();
   }
 
-  if(user.machineId !== machineId){
-    return res.status(403).json({ error:"autre appareil" });
+  if(u.machineId!==machineId){
+    return res.status(403).json({error:"autre appareil"});
   }
 
-  if(!user.active){
-    return res.status(403).json({ error:"refusé" });
-  }
-
-  return res.json({
-    success:true,
-    licence:user.licence,
-    signature:user.signature
-  });
+  res.json({success:true,licence:u.licence});
 });
 
 // ==============================
-// MODULE 14 - ADMIN
-// ==============================
-app.get("/admin/users", adminAuth, (req,res)=>{
-  res.json(Array.from(users.values()));
-});
-
-// ==============================
-// MODULE 15 - START
-// ==============================
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, () => {
-  console.log("🚀 RUNNING", PORT);
+app.listen(process.env.PORT||3000,()=>{
+  console.log("RUNNING");
 });
