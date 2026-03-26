@@ -161,6 +161,7 @@ app.post("/webhook", async (req, res) => {
       licence,
       type,
       active:true,
+      machineId: null,
       createdAt: new Date().toISOString(),
       expiresAt: expiresAt ? expiresAt.toISOString() : null
     });
@@ -168,27 +169,53 @@ app.post("/webhook", async (req, res) => {
     saveDB();
 
     addLog("ok","Licence créée - " + email + " (" + type + ")");
+
+    // email
+    try{
+      await resend.emails.send({
+        from: "VPIJLR <activation@ton-app.com>",
+        to: email,
+        subject: "Licence activée",
+        html: `<b>${licence}</b>`
+      });
+    }catch(e){
+      addLog("error","Email fail " + email);
+    }
   }
 
   res.json({ received:true });
 });
 
 // ==============================
-// MODULE 11 - CHECK ACCESS
+// MODULE 11 - CHECK ACCESS 🔐
 // ==============================
 app.post("/check-access", (req, res) => {
 
-  const { email } = req.body;
+  const { email, machineId } = req.body;
   const user = users.get(email);
 
   if(!user) return res.status(403).json({ error:"refusé" });
 
+  // expiration
   if(user.expiresAt){
     if(new Date() > new Date(user.expiresAt)){
       user.active = false;
       saveDB();
       return res.status(403).json({ error:"expirée" });
     }
+  }
+
+  // première activation
+  if(!user.machineId){
+    user.machineId = machineId;
+    saveDB();
+  }
+
+  // autre machine
+  if(user.machineId !== machineId){
+    return res.status(403).json({
+      error:"licence utilisée sur un autre appareil"
+    });
   }
 
   if(!user.active){
