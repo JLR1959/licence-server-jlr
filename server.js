@@ -96,7 +96,7 @@ function adminAuth(req, res, next){
 }
 
 // ==============================
-// MODULE 09 - LICENCE SIGNATURE 🔐
+// MODULE 09 - SIGNATURE
 // ==============================
 function signLicence(data){
   return crypto
@@ -200,7 +200,30 @@ app.post("/webhook", async (req, res) => {
 });
 
 // ==============================
-// MODULE 12 - CHECK ACCESS 🔐
+// MODULE 12 - ACTIVATE 🔥
+// ==============================
+app.get("/activate", (req, res) => {
+
+  const email = req.query.email;
+  const user = users.get(email);
+
+  if(!email){
+    return res.status(400).json({ error:"email manquant" });
+  }
+
+  if(!user){
+    return res.status(404).json({ error:"introuvable" });
+  }
+
+  return res.json({
+    licence: user.licence,
+    type: user.type,
+    expiresAt: user.expiresAt
+  });
+});
+
+// ==============================
+// MODULE 13 - CHECK ACCESS
 // ==============================
 app.post("/check-access", (req, res) => {
 
@@ -209,7 +232,6 @@ app.post("/check-access", (req, res) => {
 
   if(!user) return res.status(403).json({ error:"refusé" });
 
-  // signature check
   const validSig = signLicence({
     email:user.email,
     licence:user.licence,
@@ -250,14 +272,14 @@ app.post("/check-access", (req, res) => {
 });
 
 // ==============================
-// MODULE 13 - ADMIN
+// MODULE 14 - ADMIN
 // ==============================
 app.get("/admin/users", adminAuth, (req,res)=>{
   res.json(Array.from(users.values()));
 });
 
 // ==============================
-// MODULE 14 - START
+// MODULE 15 - START
 // ==============================
 const PORT = process.env.PORT || 3000;
 
