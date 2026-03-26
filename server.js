@@ -1,4 +1,6 @@
 // ==============================
+// MODULE 01 - SETUP
+// ==============================
 import express from "express";
 import Stripe from "stripe";
 import fs from "fs";
@@ -6,7 +8,7 @@ import fs from "fs";
 const app = express();
 
 // ==============================
-// CORS
+// MODULE 02 - CORS 🔥
 // ==============================
 app.use((req,res,next)=>{
   res.header("Access-Control-Allow-Origin","*");
@@ -16,14 +18,25 @@ app.use((req,res,next)=>{
 });
 
 // ==============================
+// MODULE 03 - BODY PARSER
+// ==============================
 app.use("/webhook", express.raw({ type: "application/json" }));
 app.use(express.json());
 
 // ==============================
+// MODULE 04 - STRIPE
+// ==============================
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // ==============================
-// DB
+// MODULE 05 - ROOT ✔
+// ==============================
+app.get("/", (req,res)=>{
+  res.send("SERVER OK");
+});
+
+// ==============================
+// MODULE 06 - DATABASE
 // ==============================
 const FILE="./licences.json";
 
@@ -42,10 +55,10 @@ function save(){
   fs.writeFileSync(FILE, JSON.stringify(Array.from(users.entries()),null,2));
 }
 
-const users=load();
+const users = load();
 
 // ==============================
-// PRICE MAP 🔥 TES 6 LICENCES
+// MODULE 07 - PRICE MAP 🔥
 // ==============================
 const PRICE_MAP = {
   "price_1TAz5VQUeVbFaSLwnwBkGeDT": "lifetime_5",
@@ -59,30 +72,33 @@ const PRICE_MAP = {
 };
 
 // ==============================
-function gen(){
-  const c="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  const b=()=>Array.from({length:6},()=>c[Math.floor(Math.random()*c.length)]).join("");
-  return Array.from({length:7},b).join("-");
+// MODULE 08 - LICENCE GENERATOR
+// ==============================
+function generateLicence(){
+  const chars="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  const block=()=>Array.from({length:6},()=>chars[Math.floor(Math.random()*chars.length)]).join("");
+  return Array.from({length:7},block).join("-");
 }
 
 // ==============================
-// WEBHOOK
+// MODULE 09 - WEBHOOK STRIPE
 // ==============================
 app.post("/webhook", async (req,res)=>{
 
   let event;
 
   try{
-    event=stripe.webhooks.constructEvent(
+    event = stripe.webhooks.constructEvent(
       req.body,
       req.headers["stripe-signature"],
       process.env.STRIPE_WEBHOOK_SECRET
     );
-  }catch{
+  }catch(err){
+    console.log("❌ Webhook signature error");
     return res.status(400).send("error");
   }
 
-  if(event.type==="checkout.session.completed"){
+  if(event.type === "checkout.session.completed"){
 
     const session = event.data.object;
 
@@ -93,8 +109,10 @@ app.post("/webhook", async (req,res)=>{
 
     const priceId = full.line_items.data[0].price.id;
 
+    console.log("PRICE ID:", priceId);
+
     if(!PRICE_MAP[priceId]){
-      console.log("PRICE INCONNU:", priceId);
+      console.log("❌ PRICE INCONNU");
       return res.json({received:true});
     }
 
@@ -102,17 +120,22 @@ app.post("/webhook", async (req,res)=>{
 
     const email = session.customer_details?.email || session.customer_email;
 
+    if(!email){
+      console.log("❌ EMAIL MANQUANT");
+      return res.json({received:true});
+    }
+
     let expiresAt = null;
 
     if(type.includes("mensuel")){
-      expiresAt = new Date(Date.now() + 30*86400000);
+      expiresAt = new Date(Date.now() + 30 * 86400000);
     }
 
     if(type.includes("annuel")){
-      expiresAt = new Date(Date.now() + 365*86400000);
+      expiresAt = new Date(Date.now() + 365 * 86400000);
     }
 
-    const licence = gen();
+    const licence = generateLicence();
 
     users.set(email,{
       email,
@@ -126,32 +149,35 @@ app.post("/webhook", async (req,res)=>{
 
     save();
 
-    console.log("LICENCE CRÉÉE:", email, type);
+    console.log("✅ LICENCE CRÉÉE:", email, type);
   }
 
   res.json({received:true});
 });
 
 // ==============================
-// ACTIVATE
+// MODULE 10 - ACTIVATE
 // ==============================
 app.get("/activate",(req,res)=>{
 
-  const email=req.query.email;
-  const u=users.get(email);
+  const email = req.query.email;
 
-  if(!u){
+  const user = users.get(email);
+
+  if(!user){
     return res.status(404).json({error:"not found"});
   }
 
   res.json({
-    licence:u.licence,
-    type:u.type,
-    expiresAt:u.expiresAt
+    licence:user.licence,
+    type:user.type,
+    expiresAt:user.expiresAt
   });
 });
 
 // ==============================
-app.listen(process.env.PORT||3000,()=>{
-  console.log("RUNNING");
+// MODULE 11 - START
+// ==============================
+app.listen(process.env.PORT || 3000, ()=>{
+  console.log("🚀 RUNNING");
 });
