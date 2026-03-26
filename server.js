@@ -17,27 +17,21 @@ app.use((req,res,next)=>{
   next();
 });
 
-// ==============================
-// MODULE 03 - BODY
-// ==============================
 app.use(express.json());
 
-// ==============================
-// MODULE 04 - STRIPE
-// ==============================
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // ==============================
-// MODULE 05 - ROOT
+// MODULE 03 - ROOT
 // ==============================
 app.get("/", (req,res)=>{
   res.send("SERVER OK");
 });
 
 // ==============================
-// MODULE 06 - DATABASE
+// MODULE 04 - DB
 // ==============================
-const FILE = "./licences.json";
+const FILE="./licences.json";
 
 function load(){
   try{
@@ -57,21 +51,21 @@ function save(){
 const users = load();
 
 // ==============================
-// MODULE 07 - PRICE MAP
+// MODULE 05 - PRICE MAP
 // ==============================
 const PRICE_MAP = {
-  "price_1TAz5VQUeVbFaSLwnwBkGeDT": "lifetime_5",
-  "price_1TAylfQUeVbFaSLwtxWaHsKD": "lifetime_1",
+  "price_1TAz5VQUeVbFaSLwnwBkGeDT": {type:"lifetime", max:5},
+  "price_1TAylfQUeVbFaSLwtxWaHsKD": {type:"lifetime", max:1},
 
-  "price_1TAyiyQUeVbFaSLwykidDo8I": "annuel_5",
-  "price_1TAyhzQUeVbFaSLwLoA9juzC": "annuel_1",
+  "price_1TAyiyQUeVbFaSLwykidDo8I": {type:"annuel", max:5},
+  "price_1TAyhzQUeVbFaSLwLoA9juzC": {type:"annuel", max:1},
 
-  "price_1TAyevQUeVbFaSLwsGmvuiSV": "mensuel_5",
-  "price_1TAycBQUeVbFaSLw9MW21kXu": "mensuel_1"
+  "price_1TAyevQUeVbFaSLwsGmvuiSV": {type:"mensuel", max:5},
+  "price_1TAycBQUeVbFaSLw9MW21kXu": {type:"mensuel", max:1}
 };
 
 // ==============================
-// MODULE 08 - LICENCE GENERATOR
+// MODULE 06 - LICENCE
 // ==============================
 function generateLicence(){
   const chars="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -80,17 +74,13 @@ function generateLicence(){
 }
 
 // ==============================
-// MODULE 09 - ACTIVATE SESSION 🔥
+// MODULE 07 - ACTIVATE SESSION
 // ==============================
 app.post("/activate-session", async (req,res)=>{
 
   try{
 
     const { session_id } = req.body;
-
-    if(!session_id){
-      return res.status(400).json({error:"missing session_id"});
-    }
 
     const session = await stripe.checkout.sessions.retrieve(
       session_id,
@@ -99,90 +89,87 @@ app.post("/activate-session", async (req,res)=>{
 
     const priceId = session.line_items.data[0].price.id;
 
-    if(!PRICE_MAP[priceId]){
-      return res.status(400).json({error:"unknown price"});
-    }
-
-    const type = PRICE_MAP[priceId];
+    const conf = PRICE_MAP[priceId];
+    if(!conf) return res.status(400).json({error:"price inconnu"});
 
     const email = session.customer_details?.email || session.customer_email;
 
-    if(!email){
-      return res.status(400).json({error:"no email"});
-    }
-
     let expiresAt = null;
 
-    if(type.includes("mensuel")){
-      expiresAt = new Date(Date.now() + 30 * 86400000);
+    if(conf.type === "mensuel"){
+      expiresAt = new Date(Date.now() + 30*86400000);
     }
 
-    if(type.includes("annuel")){
-      expiresAt = new Date(Date.now() + 365 * 86400000);
+    if(conf.type === "annuel"){
+      expiresAt = new Date(Date.now() + 365*86400000);
     }
 
-    // éviter doublon
     let user = users.get(email);
 
     if(!user){
 
-      const licence = generateLicence();
-
       user = {
         email,
-        licence,
-        type,
+        licence: generateLicence(),
+        type: conf.type,
+        maxMachines: conf.max,
+        machines: [],
         expiresAt,
-        active:true,
-        machineId:null,
         createdAt:new Date().toISOString()
       };
 
       users.set(email, user);
       save();
-
-      console.log("✅ LICENCE CRÉÉE:", email, type);
-
-    }else{
-      console.log("ℹ️ LICENCE EXISTANTE:", email);
     }
 
-    res.json({
-      email:user.email,
-      licence:user.licence,
-      type:user.type,
-      expiresAt:user.expiresAt
-    });
+    res.json(user);
 
   }catch(err){
-    console.log("❌ ERROR:", err.message);
-    res.status(500).json({error:"server error"});
+    console.log(err.message);
+    res.status(500).json({error:"fail"});
   }
-
 });
 
 // ==============================
-// MODULE 10 - ACTIVATE (fallback)
+// MODULE 08 - CHECK ACCESS 🔥
 // ==============================
-app.get("/activate",(req,res)=>{
+app.post("/check-access",(req,res)=>{
 
-  const email = req.query.email;
+  const { email, machineId } = req.body;
+
   const user = users.get(email);
 
   if(!user){
-    return res.status(404).json({error:"not found"});
+    return res.status(403).json({error:"no licence"});
+  }
+
+  // expiration
+  if(user.expiresAt && new Date() > new Date(user.expiresAt)){
+    return res.status(403).json({error:"expired"});
+  }
+
+  // machine check
+  if(!user.machines.includes(machineId)){
+
+    if(user.machines.length >= user.maxMachines){
+      return res.status(403).json({error:"limit reached"});
+    }
+
+    user.machines.push(machineId);
+    save();
   }
 
   res.json({
+    success:true,
     licence:user.licence,
-    type:user.type,
-    expiresAt:user.expiresAt
+    machines:user.machines.length,
+    max:user.maxMachines
   });
 });
 
 // ==============================
-// MODULE 11 - START
+// MODULE 09 - START
 // ==============================
 app.listen(process.env.PORT || 3000, ()=>{
-  console.log("🚀 SERVER RUNNING");
+  console.log("SERVER RUNNING");
 });
