@@ -2,28 +2,28 @@
 import express from "express";
 import Stripe from "stripe";
 import fs from "fs";
-import crypto from "crypto";
 
 const app = express();
 
 // ==============================
-const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
-const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
-const ADMIN_KEY = process.env.ADMIN_KEY;
-const LICENCE_SECRET = process.env.LICENCE_SECRET;
+// CORS
+// ==============================
+app.use((req,res,next)=>{
+  res.header("Access-Control-Allow-Origin","*");
+  res.header("Access-Control-Allow-Headers","*");
+  res.header("Access-Control-Allow-Methods","GET,POST,OPTIONS");
+  next();
+});
 
 // ==============================
 app.use("/webhook", express.raw({ type: "application/json" }));
 app.use(express.json());
 
 // ==============================
-const stripe = new Stripe(STRIPE_SECRET_KEY);
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // ==============================
-app.get("/", (req,res)=>{
-  res.send("SERVER OK");
-});
-
+// DB
 // ==============================
 const FILE="./licences.json";
 
@@ -45,11 +45,18 @@ function save(){
 const users=load();
 
 // ==============================
-function sign(data){
-  return crypto.createHmac("sha256",LICENCE_SECRET)
-    .update(JSON.stringify(data))
-    .digest("hex");
-}
+// PRICE MAP 🔥 TES 6 LICENCES
+// ==============================
+const PRICE_MAP = {
+  "price_1TAz5VQUeVbFaSLwnwBkGeDT": "lifetime_5",
+  "price_1TAylfQUeVbFaSLwtxWaHsKD": "lifetime_1",
+
+  "price_1TAyiyQUeVbFaSLwykidDo8I": "annuel_5",
+  "price_1TAyhzQUeVbFaSLwLoA9juzC": "annuel_1",
+
+  "price_1TAyevQUeVbFaSLwsGmvuiSV": "mensuel_5",
+  "price_1TAycBQUeVbFaSLw9MW21kXu": "mensuel_1"
+};
 
 // ==============================
 function gen(){
@@ -69,7 +76,7 @@ app.post("/webhook", async (req,res)=>{
     event=stripe.webhooks.constructEvent(
       req.body,
       req.headers["stripe-signature"],
-      STRIPE_WEBHOOK_SECRET
+      process.env.STRIPE_WEBHOOK_SECRET
     );
   }catch{
     return res.status(400).send("error");
@@ -77,31 +84,49 @@ app.post("/webhook", async (req,res)=>{
 
   if(event.type==="checkout.session.completed"){
 
-    const s=event.data.object;
+    const session = event.data.object;
 
-    const email=s.customer_details?.email || s.customer_email;
+    const full = await stripe.checkout.sessions.retrieve(
+      session.id,
+      { expand:["line_items"] }
+    );
 
-    if(!email) return res.json({received:true});
-    if(users.has(email)) return res.json({received:true});
+    const priceId = full.line_items.data[0].price.id;
 
-    const licence=gen();
+    if(!PRICE_MAP[priceId]){
+      console.log("PRICE INCONNU:", priceId);
+      return res.json({received:true});
+    }
 
-    const data={
-      email,
-      licence,
-      type:"lifetime",
-      expiresAt:null
-    };
+    const type = PRICE_MAP[priceId];
+
+    const email = session.customer_details?.email || session.customer_email;
+
+    let expiresAt = null;
+
+    if(type.includes("mensuel")){
+      expiresAt = new Date(Date.now() + 30*86400000);
+    }
+
+    if(type.includes("annuel")){
+      expiresAt = new Date(Date.now() + 365*86400000);
+    }
+
+    const licence = gen();
 
     users.set(email,{
-      ...data,
-      signature:sign(data),
+      email,
+      licence,
+      type,
+      expiresAt,
       active:true,
       machineId:null,
       createdAt:new Date().toISOString()
     });
 
     save();
+
+    console.log("LICENCE CRÉÉE:", email, type);
   }
 
   res.json({received:true});
@@ -111,6 +136,7 @@ app.post("/webhook", async (req,res)=>{
 // ACTIVATE
 // ==============================
 app.get("/activate",(req,res)=>{
+
   const email=req.query.email;
   const u=users.get(email);
 
@@ -120,46 +146,9 @@ app.get("/activate",(req,res)=>{
 
   res.json({
     licence:u.licence,
-    type:u.type
+    type:u.type,
+    expiresAt:u.expiresAt
   });
-});
-
-// ==============================
-// CHECK
-// ==============================
-app.post("/check-access",(req,res)=>{
-
-  const {email,machineId}=req.body;
-  const u=users.get(email);
-
-  if(!u){
-    return res.status(403).json({error:"refusé"});
-  }
-
-  if(!u.machineId){
-    u.machineId=machineId;
-    save();
-  }
-
-  if(u.machineId!==machineId){
-    return res.status(403).json({error:"autre appareil"});
-  }
-
-  res.json({success:true,licence:u.licence});
-});
-
-// ==============================
-// ADMIN
-// ==============================
-app.get("/admin/users",(req,res)=>{
-
-  const key=req.headers["admin-key"];
-
-  if(key!==ADMIN_KEY){
-    return res.status(403).json({error:"forbidden"});
-  }
-
-  res.json(Array.from(users.values()));
 });
 
 // ==============================
